@@ -1,0 +1,62 @@
+---
+title: "GET /v1/company/{domain}/confidence"
+openapi: "GET /v1/company/{domain}/confidence"
+description: "How much of the score is grounded in real data."
+---
+
+A `composite_score` of 67 sounds the same whether it was computed on full data or half-empty fetcher results. This endpoint exposes the difference: data completeness, failed fetchers, and which signals fell back to neutral defaults.
+
+## When to use it
+
+- Before trusting a score for a high-stakes decision.
+- To render a "confidence" pill next to the score in your UI.
+- To explain to a stakeholder why a small / private company has a directional rather than precise score.
+
+## The three bands
+
+| Band | Meaning |
+|---|---|
+| `high` | Completeness ≥80% and no critical fetcher failures. Trust the number. |
+| `medium` | 60–79% completeness, or one non-critical fetcher missing. Use as a directional indicator; cross-check critical buckets. |
+| `directional` | <60% completeness or critical fetcher (PDL / Crustdata) failed. Treat the composite as a rough position, not a precise reading. |
+
+## Response shape
+
+```json
+{
+  "domain": "stripe.com",
+  "scored_at": "2026-05-12T18:30:00Z",
+  "band": "high",
+  "completeness_pct": 92,
+  "failed_fetchers": [],
+  "data_warnings": [],
+  "missing_signals": ["state_legislative_activity"]
+}
+```
+
+For comparison, a thinly-covered domain:
+
+```json
+{
+  "domain": "obscurestartup.com",
+  "scored_at": "2026-05-12T14:00:00Z",
+  "band": "directional",
+  "completeness_pct": 51,
+  "failed_fetchers": ["pdl"],
+  "data_warnings": ["pdl_no_founder_data"],
+  "missing_signals": [
+    "founder_years_experience",
+    "founder_prior_exits",
+    "cofounder_skill_diversity",
+    "domain_expertise_match"
+  ]
+}
+```
+
+## `missing_signals` semantics
+
+A signal is "missing" if it's currently scoring at the neutral fallback (≈ 50 / 100). This is **not** the same as a zero — neutral 50 means "we have no real data, so we're not penalizing or rewarding." A long missing list pulls the composite toward 50.
+
+## How completeness is computed
+
+A weighted ratio of "signals with real underlying data" / "signals applicable to the target's profile". Established companies have different applicable signals than growth companies (some venture-stage signals are N/A for mature firms), so the denominator is profile-aware.

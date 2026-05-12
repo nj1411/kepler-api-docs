@@ -1,0 +1,52 @@
+---
+title: "GET /v1/usage"
+openapi: "GET /v1/usage"
+description: "Your current monthly usage counters and tier limits."
+---
+
+A read of where you stand against your tier's quota for the current calendar month. **Does not increment** any counter — checking your balance shouldn't move it.
+
+## When to use it
+
+- Render a dashboard with "X / 250 cold calls used this month".
+- Detect a runaway script before it hits the per-account 24h circuit breaker.
+- Confirm an overage rate or freshness window without paginating any docs.
+
+## Response
+
+```json
+{
+  "user_id": "uuid-of-your-account",
+  "period": "2026-05",
+  "tier": "growth",
+  "total_calls":   1042,
+  "cold_calls":      38,
+  "cached_calls": 1004,
+  "last_reset": "2026-05-01T00:00:00Z",
+  "next_reset": "2026-06-01T00:00:00Z",
+  "tier_limits": {
+    "cached_calls_included":  5000,
+    "cold_calls_included":     250,
+    "freshness_window_hours":    6
+  }
+}
+```
+
+## Counter semantics
+
+- **`total_calls`** = `cached_calls` + `cold_calls`. Both meters count.
+- **`cold_calls`** is what bills against your tier's included monthly budget. When this reaches `tier_limits.cold_calls_included`, further `POST /v1/score` calls that would trigger a cold run return `429 cold_budget_exhausted` until the next monthly reset.
+- **`null` in `tier_limits`** means unmetered (Enterprise / admin).
+- **No overage counter in v1.0.** Metered overage is on the v1.5 roadmap; when it ships, an additional counter will appear here for accounts that opt in.
+
+## Zero-state
+
+If you haven't made any calls yet this period (or it's the first of the month and counters just reset), every counter reads `0` and `last_reset` reads the current period's start. There's no `404` for "never called the API" — we treat that as zero state.
+
+## Counter reset
+
+Counters reset on the first of the month at `00:00 UTC`. Reset is lazy — the first call after the rollover sets `last_reset` to the new period start and zeroes the per-period meters. Historical periods are retained 14 months for billing reconciliation but are not exposed via this endpoint.
+
+## Why no increment
+
+Stripe's `/v1/subscription` doesn't bill you for reading your subscription state. Same principle. Calling `/v1/usage` is free — go nuts.

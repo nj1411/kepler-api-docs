@@ -1,0 +1,74 @@
+---
+title: "Economics — cold vs cached"
+description: "Why cold and cached calls are billed differently."
+---
+
+Most pricing pages don't explain themselves. This one does, because the asymmetry is large and you'll integrate better if you understand it.
+
+## What a cold call actually costs us
+
+A cold scoring run executes a Step Functions pipeline that fans out to four fetchers (Crustdata, PDL, DataForSEO, NewsAPI) and runs four to six LLM enrichment calls against Claude Sonnet + Claude Haiku. Real numbers per cold call, averaged across our blast cohort:
+
+| Cost line | Typical |
+|---|---|
+| Fetcher credits (Crustdata + PDL + DataForSEO + NewsAPI) | $0.20 – $0.40 |
+| LLM enrichment (Claude API) | $0.10 – $0.30 |
+| Compute (Lambda + DynamoDB) | <$0.01 |
+| **Total cold call** | **~$0.30 – $0.80** |
+
+Latency: 30–60 seconds end to end.
+
+## What a cached call costs us
+
+A cached call is one DynamoDB `Query` against the score-history table and a Lambda invocation. We're looking at single-digit milliseconds and a fraction of a cent.
+
+```
+Cached call ≈ $0.0001
+Cold call   ≈ $0.50
+Ratio       ≈ 5,000×
+```
+
+If we billed both flatly we'd either (a) overcharge for cached calls and lose price-sensitive customers, or (b) undercharge for cold calls and lose money on power users. Splitting them lets each path be priced near its true marginal cost.
+
+## How your tier exploits this
+
+Every tier has both a cached quota and a cold quota. The freshness window controls which path you land on:
+
+- **Starter (24h window).** Score the same company twice in 24h → second call is cached. Score 500 different companies in a month → most are cold, but the freshness window catches duplicates.
+- **Growth (6h window).** Tighter window means cold runs happen more often, but the per-month cold budget is 5× higher (250) to match.
+- **Scale (1h window).** Near-realtime data. Cold pipeline runs often. Budget reflects it.
+
+If you're building a daily-refresh dashboard and your tier window is shorter than your refresh cadence, you'll see cached calls. If you're scoring fresh-each-time, you're paying cold rates — which is fine, that's what you're buying.
+
+## v1.0 is flat-only
+
+When you exhaust your monthly cold-call budget, the API returns `429 cold_budget_exhausted` until the next monthly reset. To get more capacity in the same month, upgrade to the next tier.
+
+We chose flat-only at launch for three reasons:
+
+1. **Predictability.** $399 means $399. Every month. Procurement can sign a flat subscription line without a "burst-month" objection.
+2. **Cold-call abuse protection.** A runaway script on a fresh key can't spend $1,000 of fetcher credits overnight. The hard cap is the floor of safety.
+3. **Honest pricing.** We don't yet know what overage rates the market will bear. Launching flat captures 60–90 days of real cold-call cost data so we can price overage from evidence, not guesswork.
+
+### Metered overage is on the v1.5 roadmap
+
+Power users — folks who want to occasionally burst beyond their tier without committing to an upgrade — are exactly who metered overage is designed for. We'll add it as a Stripe metered line item alongside the flat subscription once cold-call cost is stable for two consecutive weeks (the same gate that opens our closed beta). When it lands, it'll be:
+
+- **Opt-in per account** — your existing flat subscription doesn't change unless you turn overage on.
+- **Per-tier rate published in advance** — you'll see what each overage cold call costs before enabling it.
+- **Bounded by a cap you set** — pick the max overage spend you'll accept per month. Cap of $0 = behave like flat-only.
+- **Daily-aggregated** — usage is rolled up nightly into your Stripe invoice, not per-call. No surprise charges at the end of the month.
+
+Customers on the flat plan when v1.5 ships will be auto-eligible. Until then: plan around your tier's included budget, and upgrade tiers when patterns require it.
+
+## Practical patterns
+
+**Pattern 1 — Dashboard / portfolio tracking.** You're rendering scores for a fixed list of companies that change slowly. Hit `POST /v1/score` on a daily cron at off-peak hours. Most calls will be cached after the first scoring run; you'll stay well inside your tier's cold budget.
+
+**Pattern 2 — Pipeline screening.** You're scoring hundreds of new companies a month from an inbound list. Size the tier to your monthly volume — Growth's 250 cold calls covers ~8 new companies per workday. If you sustain higher than that, Scale is the right tier.
+
+**Pattern 3 — Reactive scoring.** A user enters a domain into your product; you score it. Use the async pattern (`wait=false`) and a job-poll loop on Growth+ so your request doesn't block 60s.
+
+## Margin transparency
+
+If we publish a $0.50/cold-call cost and the API runs at $0.80 average, our gross margin on Scale's max-included usage shrinks to 20%. We monitor this weekly via `kepler-api-cost-log`. If we see two consecutive weeks above $0.60 average we'll either lower the included-cold number or raise the base price. We'd telegraph any pricing change with 30 days notice on existing contracts.

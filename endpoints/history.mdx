@@ -1,0 +1,65 @@
+---
+title: "GET /v1/score/{domain}/history"
+openapi: "GET /v1/score/{domain}/history"
+description: "Time-series of every score Kepler has ever produced for a company."
+---
+
+Returns every stored scoring run for `domain`, DESC by `scored_at`. Paginated.
+
+## When to use it
+
+- Plot a score trajectory chart.
+- Detect rating changes (`KI-2+` → `KI-1`).
+- Inspect how a particular event (funding round, leadership change, press coverage) moved the buckets.
+
+## Pagination
+
+Default `limit=100`, max `500`. Responses include `next_cursor` when more pages exist:
+
+```bash
+curl "https://api.keplerinsights.us/v1/score/stripe.com/history?limit=50" \
+  -H "X-API-Key: ki_live_..."
+```
+
+```json
+{
+  "domain": "stripe.com",
+  "records": [
+    { "scored_at": "2026-05-12T18:30:00Z", "composite_score": 78.2, "ki_rating": "KI-1+", ... },
+    { "scored_at": "2026-05-11T18:30:00Z", "composite_score": 77.9, "ki_rating": "KI-1+", ... }
+  ],
+  "next_cursor": "MjAyNi0wNS0xMVQxODozMDowMFo="
+}
+```
+
+Pass the cursor back:
+
+```
+GET /v1/score/stripe.com/history?limit=50&cursor=MjAyNi0wNS0xMVQxODozMDowMFo=
+```
+
+When there's no `next_cursor` in the response, you've reached the end.
+
+## What's in a record
+
+Each entry is a **curated** subset of the internal score record — the time-series core only. Notably absent vs the portal:
+
+- ❌ `top_signals` (with guidance cards)
+- ❌ `executive_summary`
+- ❌ `signal_movers` / `curated_signals`
+
+These are portal-rendered narrative fields, not core scoring data. If you need them, use the portal-side surfaces — they're a different SKU.
+
+What you do get on every record:
+
+- `scored_at`, `composite_score`, `scale_premium`, `ki_rating`, `momentum_index`
+- Full `buckets` block (4 floats)
+- `data_completeness_pct`
+
+## Volume note
+
+A company scored daily for 12 months has ~365 records, each <1KB after curation. The full table for a single domain fits comfortably in one or two pages of `limit=500`. Don't worry about volume.
+
+## Stale → fresh promotion
+
+If you want the **current** score, don't paginate to the head of the list — call `GET /v1/score/{domain}` instead. It's a single-shot lookup and counts against your cached quota the same way.

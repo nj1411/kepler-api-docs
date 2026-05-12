@@ -1,0 +1,42 @@
+---
+title: "GET /v1/score/{domain}"
+openapi: "GET /v1/score/{domain}"
+description: "Read the latest cached score for a company. Never triggers a cold run."
+---
+
+Cached-only score lookup. Returns the freshest stored record, or `404` if Kepler has never scored this domain.
+
+## When to use it
+
+- After a `504` from `POST /v1/score` — poll this until the cold run lands.
+- After a `202` from `POST /v1/score?wait=false` — though `GET /v1/jobs/{job_id}` is the canonical poll path and tells you when the run is done. This endpoint will silently keep returning the old record until the new one is written.
+- To re-render an existing UI without using a cold-call slot — calls to this endpoint count against your cached quota, not cold.
+
+## What it does NOT do
+
+- Trigger a cold run. Even with no cached record, you get `404`, never a 60-second wait.
+- Respect the freshness window. It returns the latest record regardless of age. If you care about freshness, check the `scored_at` timestamp yourself or use `POST /v1/score`.
+
+## Example
+
+```bash
+curl https://api.keplerinsights.us/v1/score/stripe.com \
+  -H "X-API-Key: ki_live_..."
+```
+
+```json
+{
+  "domain": "stripe.com",
+  "scored_at": "2026-05-12T14:30:00Z",
+  "ki_rating": "KI-1+",
+  "composite_score": 78.2,
+  "scale_premium": 6.4,
+  "buckets": { ... },
+  "rank": { "percentile": 99, "cohort_size": 541 },
+  "x_kepler": {
+    "tier": "growth",
+    "cache_status": "cached",
+    "freshness_window_hours": 6
+  }
+}
+```

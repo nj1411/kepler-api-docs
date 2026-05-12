@@ -1,0 +1,57 @@
+---
+title: "GET /v1/signals"
+openapi: "GET /v1/signals"
+description: "The 67-signal manifest. What every score is composed of."
+---
+
+A read-only manifest of every signal the engine evaluates. Use it to render bucket / category breakdowns and to look up labels + descriptions for stored `signal_scores` keys.
+
+## When to use it
+
+- Building a UI that lists a company's signal scores by category.
+- Documenting your integration ("these 17 signals contributed most to this score").
+- Periodic snapshot — fetch once, cache locally, refresh weekly. The manifest changes only on engine releases.
+
+## Response shape
+
+```json
+{
+  "version": "2026-05-12",
+  "signals": [
+    {
+      "key": "founder_years_experience",
+      "label": "Founder years of experience",
+      "bucket": "team_structure",
+      "category": "founding_team",
+      "weight": 12.5,
+      "actionability": "immutable",
+      "description": "Total professional years across the founding team. Sourced from PDL employment history with LLM enrichment fallback."
+    },
+    ...
+  ]
+}
+```
+
+## Fields
+
+- **`key`** — stable identifier. Matches the keys in stored `signal_scores` maps. Don't render this directly; use `label`.
+- **`label`** — human-readable name.
+- **`bucket`** — one of `team_structure`, `market_position`, `momentum_tailwinds`, `financial_health`.
+- **`category`** — finer grouping inside the bucket.
+- **`weight`** — relative weight in its category. Categories sum to 100 within their parent bucket; signals sum to 100 within their parent category.
+- **`actionability`** — `actionable` (a founder can change this in months), `slow_actionable` (years), or `immutable` (e.g. academic background, prior exits).
+- **`description`** — one-sentence narrative of what the signal measures.
+
+## Identical in sandbox and live
+
+The manifest is deterministic content — `ki_test_` and `ki_live_` keys both return the same JSON. The response does **not** carry a `mode: "sandbox"` field, by design (no canned-vs-real distinction to make).
+
+## When to refresh
+
+The manifest changes when:
+
+1. Kepler adds a new signal (rare; major engine version bump).
+2. Kepler retires a signal (e.g. `competitor_hq_distribution` was removed pre-launch).
+3. Weights are tuned (frequent — but the schema stays the same).
+
+The top-level `version` field is a date string and bumps on every change. Compare it to your cached value to decide whether to refresh.

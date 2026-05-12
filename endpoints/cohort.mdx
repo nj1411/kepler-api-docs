@@ -1,0 +1,65 @@
+---
+title: "GET /v1/company/{domain}/cohort"
+openapi: "GET /v1/company/{domain}/cohort"
+description: "Sector + geo + business-profile-matched peer comparison."
+---
+
+Where does this company rank against companies that are actually like it — same sector, same geographic scope, same growth-or-established profile? `/v1/distribution` gives universe context; this endpoint gives matched-peer context, which is usually what an analyst actually wants.
+
+## When to use it
+
+- "Is `composite_score = 67` actually good for a B2B SaaS in growth stage?"
+- "Show me where this company ranks against its competitive set."
+- Building a comp table next to a profile page.
+
+## Matching rules
+
+The cohort filter uses three fields from the target's stored record:
+
+1. **sector** (e.g. `saas`, `fintech`, `healthcare`, …)
+2. **geo_scope** (e.g. `us`, `eu`, `global`, …)
+3. **business_profile** (`growth` or `established`)
+
+A company is in the cohort if all three match the target's. The target itself is excluded for percentile / rank math.
+
+## Response highlights
+
+```json
+{
+  "target": {
+    "domain": "stripe.com",
+    "ki_rating": "KI-1+",
+    "composite_score": 78.2,
+    "business_profile": "growth",
+    "context": { "sector": "fintech", "geo_scope": "global" }
+  },
+  "cohort": {
+    "count": 47,
+    "mean": 51.3, "p50": 50.8, "p90": 68.4,
+    "stddev": 11.2,
+    "rank": 1, "percentile": 100
+  },
+  "bucket_means": {
+    "team_structure":     { "target": 82.0, "cohort": 54.2, "delta": 27.8 },
+    "market_position":    { "target": 81.5, "cohort": 53.7, "delta": 27.8 },
+    "momentum_tailwinds": { "target": 76.0, "cohort": 50.1, "delta": 25.9 },
+    "financial_health":   { "target": 73.5, "cohort": 47.0, "delta": 26.5 }
+  },
+  "members": [
+    { "domain": "...", "composite_score": 68.4, "ki_rating": "KI-1" },
+    ...
+  ]
+}
+```
+
+`members` is capped at 200 and sorted DESC by composite score. `bucket_means.{bucket}.delta` is `target − cohort.mean` — positive = target outperforms cohort on that bucket.
+
+## What 404 means
+
+If the target has never been scored, you get `404 { error: "target_not_found" }`. Trigger a score with `POST /v1/score` first.
+
+If the target exists but has no peers (rare — usually a very narrow sector / geo combination), the response is `200` with `cohort.count: 0`. Render gracefully.
+
+## Refresh cadence
+
+The cohort is computed over the latest record per domain from the Kepler event stream. Refresh interval matches the platform's scoring cadence — most cohorts are at most ~24 hours stale.

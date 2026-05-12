@@ -1,0 +1,57 @@
+---
+title: "GET /v1/jobs/{job_id}"
+openapi: "GET /v1/jobs/{job_id}"
+description: "Poll an async scoring job."
+---
+
+Returns the current state of a job started by [`POST /v1/score?wait=false`](/endpoints/async).
+
+## Status transitions
+
+| `status` | Meaning |
+|---|---|
+| `pending` | The underlying cold pipeline is still running. Poll again in ~5s. |
+| `complete` | The pipeline succeeded. `result_ref` and `score_url` are populated. |
+| `failed` | The pipeline ended in a non-success terminal state. `failure_reason` explains. |
+
+Status is settled **lazily** — the first poll that observes a terminal underlying execution flips the row. A job that's never polled stays `pending` in storage until its 30-day TTL.
+
+## Reading a complete job
+
+```json
+{
+  "job_id":       "9f0c2d83-...",
+  "status":       "complete",
+  "domain":       "stripe.com",
+  "created_at":   "2026-05-12T18:30:00Z",
+  "completed_at": "2026-05-12T18:30:43Z",
+  "result_ref":   { "domain": "stripe.com", "scored_at": "2026-05-12T18:30:43Z" },
+  "score_url":    "/v1/score/stripe.com"
+}
+```
+
+Once you have the `score_url`, do `GET https://api.keplerinsights.us/v1/score/stripe.com` to read the actual score. The two-step is intentional: the job row stays small and cheap; the full score response stays the same shape regardless of how it was triggered.
+
+## Failure reasons
+
+| `failure_reason` | Meaning |
+|---|---|
+| `sfn_failed` | The state-machine ended in `FAILED` (engine raised an exception). |
+| `sfn_timed_out` | Step Functions hit its task timeout. Usually transient — retry. |
+| `sfn_aborted` | An operator manually aborted the run. Should never happen in production. |
+| `scoring_completed_no_record` | The state-machine succeeded but no score-history row appeared. Possible cause: insufficient data stub. Check `/v1/company/{domain}/confidence`. |
+
+## Cross-user access
+
+Job IDs are server-side bound to the API key that created them. Polling someone else's job ID returns:
+
+```
+HTTP/1.1 403 Forbidden
+{ "error": "forbidden" }
+```
+
+If you're proxying multiple downstream users through one Kepler key, you'll need to map their session IDs to your `job_id`s yourself.
+
+## Expiration
+
+Jobs are kept 30 days then deleted via DynamoDB TTL. Polling an expired job returns `404`. Don't rely on job rows for long-term history; use `GET /v1/score/{domain}/history` for that.

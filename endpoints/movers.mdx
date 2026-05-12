@@ -1,0 +1,69 @@
+---
+title: "GET /v1/movers"
+openapi: "GET /v1/movers"
+description: "Top gainers and decliners across the universe over a chosen window."
+---
+
+The 20 biggest score gainers and 20 biggest decliners over the last 7, 30, or 90 days.
+
+## Parameters
+
+| Query | Required | Values |
+|---|---|---|
+| `window` | **yes** | `7d`, `30d`, `90d` |
+
+A request with no `window` or an invalid value returns `400 { error: "window must be one of [...] " }`.
+
+## When to use it
+
+- Daily / weekly "what's moving" digest.
+- Spotting accelerating or distressed companies you don't already track.
+- Validating that a thesis (e.g. "fintech is heating up") is showing in the data.
+
+## Response
+
+```json
+{
+  "window": "30d",
+  "window_start": "2026-04-12T18:30:00Z",
+  "window_end":   "2026-05-12T18:30:00Z",
+  "gainers": [
+    {
+      "domain": "anthropic.com",
+      "company_name": "Anthropic",
+      "composite_now": 72.4,
+      "composite_then": 64.1,
+      "delta": 8.3,
+      "ki_rating_now": "KI-1",
+      "ki_rating_then": "KI-2+"
+    },
+    ...
+  ],
+  "decliners": [
+    {
+      "domain": "examplecorp.com",
+      "company_name": "Example Corp",
+      "composite_now": 41.0,
+      "composite_then": 53.6,
+      "delta": -12.6,
+      "ki_rating_now": "KI-3",
+      "ki_rating_then": "KI-2"
+    },
+    ...
+  ]
+}
+```
+
+`delta = composite_now − composite_then`. Both lists are sorted by `|delta|` DESC.
+
+## Eligibility for movers
+
+A domain is eligible if it has at least two scoring runs: one inside the window and one before it. Newly-scored domains with no prior history are excluded — they have nothing to move against.
+
+## Caching
+
+The full response is cached server-side for 5 minutes per `(pipeline_version, window)` pair. Two callers requesting `?window=30d` 30 seconds apart get bit-identical responses.
+
+## No pagination
+
+There's no `limit` or `cursor`. Movers always returns 20 + 20. If you want a deeper view, compose `/v1/distribution` + per-domain `/v1/score/{domain}/history`.

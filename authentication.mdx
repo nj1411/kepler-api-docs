@@ -1,0 +1,50 @@
+---
+title: "Authentication"
+description: "X-API-Key header. Live vs test prefixes. Rotation + security."
+---
+
+Every request requires a single header:
+
+```
+X-API-Key: ki_live_YOUR_KEY
+```
+
+No bearer tokens, no OAuth, no signing — just the header.
+
+## Key prefixes
+
+| Prefix | Mode | Purpose |
+|---|---|---|
+| `ki_live_…` | live | Real fetcher calls, real scoring engine, billable. Live keys reject test domains. |
+| `ki_test_…` | test | Sandbox only. Returns canned data, never invokes fetchers, never bills. Only the [4 canned test domains](/sandbox) are accepted. |
+
+Test keys exist on every paid tier and on the Free trial. You can hold many test keys with no impact on quota.
+
+## Managing keys
+
+The developer console at [api.keplerinsights.us](https://api.keplerinsights.us) is the single source of truth:
+
+- **Create a key** — name it (e.g. "production", "staging"), choose mode (live or test). The raw key is displayed exactly once.
+- **List keys** — see prefix, label, status, and `last_used_at` for every key on your account.
+- **Revoke a key** — instant from the console; takes up to 5 minutes to propagate to the API edge (we cache authorization decisions for that long; this matches Stripe's API-key cache behavior).
+
+## Security model
+
+<Warning>
+**Never put a Kepler API key in client-side code.** Every endpoint is designed for backend-to-API integration. The API has no CORS allowlist — browser requests will be rejected at the gateway.
+</Warning>
+
+- Keys are stored hashed (SHA-256). We cannot recover a key after creation; if you lose it, revoke and reissue.
+- Rotation: create a new key, deploy, then revoke the old one. There's no enforced rotation interval, but quarterly is sane practice.
+- Compromise: revoke immediately from the console, then email `noah@keplerinsights.us` so we can audit the access log together.
+
+## Error responses
+
+A request with no key, an invalid key, or a revoked key returns:
+
+```
+HTTP/1.1 401 Unauthorized
+{ "error": "unauthorized" }
+```
+
+See [Errors](/errors) for the full code list.

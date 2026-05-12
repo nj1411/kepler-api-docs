@@ -1,0 +1,37 @@
+---
+title: "Introduction"
+description: "Curated company-scoring intelligence over a 67-signal engine."
+---
+
+The Kepler Insights API exposes the same scoring engine that powers Kepler's Pro Insight and Pro Venture portals — over a stable REST surface, with deterministic schemas and a free sandbox.
+
+## What it scores
+
+Every Kepler score is a composite over **67 signals** organized into **4 buckets**:
+
+| Bucket | What it measures |
+|---|---|
+| **Team & Structure** | Founder track record, team strength, structural differentiation |
+| **Market Position** | Sector tailwinds, market size, competitive landscape |
+| **Momentum & Tailwinds** | Regulatory environment, press coverage, brand strength |
+| **Financial Health** | Revenue, funding efficiency, employee growth |
+
+The composite (0–100) maps to a **KI rating** from `KI-5` (early-stage) to `KI-1+` (elite franchise). A separate **scale premium** (up to ~12 points) lifts established mega-caps whose fundamentals justify a higher tier than their growth-stage signals alone would produce.
+
+## What you can do with it
+
+- **Score one company on demand.** `POST /v1/score` returns a fresh composite in 30–60 seconds (or instantly if a recent record is cached).
+- **Track score history.** `GET /v1/score/{domain}/history` returns the full time-series — every scoring run for that company.
+- **Compare against a cohort.** `GET /v1/company/{domain}/cohort` returns sector + geo + profile-matched peers, ranked.
+- **Assess data confidence.** `GET /v1/company/{domain}/confidence` shows how much of the score is grounded in real data vs neutral fallbacks.
+- **Read the universe.** `GET /v1/distribution` and `GET /v1/movers` summarize every company Kepler has ever scored.
+
+## How it costs
+
+Cached calls are nearly free; cold calls cost us real money on fetchers + LLM enrichment. Pricing reflects that asymmetry — see [Economics](/economics) for the rationale.
+
+## Get started
+
+<Card title="Quickstart →" icon="rocket" href="/quickstart">
+  Sign up, get a key, make your first call in 5 minutes.
+</Card>

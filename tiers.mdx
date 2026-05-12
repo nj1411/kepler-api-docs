@@ -1,0 +1,64 @@
+---
+title: "Tiers & limits"
+description: "Quotas, freshness windows, async eligibility."
+---
+
+Five public tiers. Cached and cold calls are billed separately because they cost dramatically different amounts — see [Economics](/economics) for the why.
+
+## Quotas
+
+| Tier | Base / mo | Cached calls | Cold calls | When you hit the cap | Freshness window |
+|---|---|---|---|---|---|
+| **Free** (14-day trial) | $0 | 25 | 5 | Upgrade to Starter | 7 days |
+| **Starter** | $99 | 500 | 50 | Upgrade to Growth | 24h |
+| **Growth** | $399 | 5,000 | 250 | Upgrade to Scale | 6h |
+| **Scale** | $999 | 25,000 | 1,000 | Contact us for Enterprise | 1h |
+| **Enterprise** | Custom | Custom | Custom | Negotiated | 15 min |
+
+<Note>
+**v1.0 is flat-only.** When you exhaust your monthly cold-call budget, the API returns `429 cold_budget_exhausted` until the next monthly reset. Upgrade to the next tier for more capacity. Metered overage for power users is on the v1.5 roadmap once we have stable cold-call cost telemetry — see [Economics](/economics).
+</Note>
+
+<Note>
+The **Free** tier is a 14-day evaluation trial, not a permanent free plan. It's sandbox-only — no real fetcher access. You must add a card at signup; it auto-converts to Starter at trial end unless you cancel.
+</Note>
+
+## Freshness windows
+
+When you call `POST /v1/score` and a recent record exists within your tier's freshness window, you get it back instantly as `cache_status: "cached"` — no cold-call usage incremented. Only if the record is missing or stale (or you set `force_fresh: true` on Enterprise) do we run a fresh cold pipeline.
+
+| Tier | Window |
+|---|---|
+| Starter | 24 hours |
+| Growth | 6 hours |
+| Scale | 1 hour |
+| Enterprise | 15 minutes |
+
+Shorter windows = more cold runs = more cost. Tier prices reflect that.
+
+## Async eligibility
+
+`POST /v1/score?wait=false` is available on **Growth** tier and above. Free / Starter callers receive `400 { error: "async_requires_growth" }` if they request it. See [Async scoring](/endpoints/async) for the full polling loop.
+
+## Circuit breakers
+
+Two automatic safety nets cap cold spend on top of the monthly cap:
+
+1. **Per-key cold ceiling** — 200 cold calls per hour, per key. Trips `429 { error: "rate limited", reason: "per_key_cold_1h" }`. Rotates back open after the hour rolls.
+2. **Per-account 24-hour cold ceiling** — 2× your tier's monthly cold-call budget within any 24-hour window. Catches runaway scripts on a fresh key. Returns `429 { reason: "account_cold_24h" }`. Email support if you've hit this legitimately and we'll lift the cap by hand.
+
+Both checks happen before the SFN execution starts, so a tripped breaker costs zero.
+
+## Watermarks
+
+Every response includes an `x_kepler` block:
+
+```json
+"x_kepler": {
+  "tier": "starter",
+  "cache_status": "cached",
+  "freshness_window_hours": 24
+}
+```
+
+`cache_status: "cold"` means this call ran the cold pipeline and incremented your cold-call counter. `"cached"` means a stored record was returned.

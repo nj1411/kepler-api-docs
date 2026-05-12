@@ -1,0 +1,65 @@
+---
+title: "Sandbox"
+description: "Four canned domains. Deterministic responses. Zero fetcher cost."
+---
+
+The sandbox lets you build and test against real-shape responses without burning fetcher credits. Every paid tier and the Free trial includes test keys; you can hold as many as you want.
+
+## Activating sandbox mode
+
+Use a key prefixed `ki_test_`. There's no separate base URL or stage — the same endpoints handle both modes, and the active mode is determined by the key prefix.
+
+```bash
+curl https://api.keplerinsights.us/v1/score \
+  -H "X-API-Key: ki_test_YOUR_KEY" \
+  -d '{"domain": "acme.test"}'
+```
+
+Every sandbox response carries a top-level `mode: "sandbox"` field so your code can detect canned data unambiguously. Live responses do not carry this field; its absence means "this is real data."
+
+```json
+{
+  "mode": "sandbox",
+  "domain": "acme.test",
+  "composite_score": 67.2,
+  ...
+}
+```
+
+(Exception: `GET /v1/signals` returns identical content in both modes — the schema manifest is deterministic — and is not tagged.)
+
+## The four canned domains
+
+| Domain | KI Rating | Composite | Use it for |
+|---|---|---|---|
+| `acme.test` | KI-1 | 67.2 | Healthy baseline — strong-but-not-top result. Good default for screenshots. |
+| `unicorn.test` | KI-1+ | 79.4 | Elite outlier. Has a large scale premium (7.8). Use to test top-of-rank rendering. |
+| `struggling.test` | KI-4 | 32.1 | Distressed company. Confidence band returns `directional` with missing fetcher data. Use to test low-confidence + warning UI. |
+| `cohort.test` | KI-3 | 45.0 | Mid-pack. The cohort response uses this as the target so members spread realistically above and below. |
+
+## What the sandbox covers
+
+Every endpoint accepts `ki_test_` keys. Coverage parity is verified by an automated test suite — if the live API supports it, the sandbox returns shape-equivalent canned data for it.
+
+| Endpoint | Sandbox behavior |
+|---|---|
+| `POST /v1/score`, `GET /v1/score/{domain}` | Canned score for the 4 test domains. Live keys reject them. |
+| `POST /v1/score?wait=false` | Returns a real `job_id` writing to the jobs table; status flips `pending → complete` after a 5-second age threshold so you can exercise the full poll loop. |
+| `GET /v1/jobs/{job_id}` | Reads the sandbox job row. Settles age-based instead of via a real execution. |
+| `GET /v1/score/{domain}/history` | 4–12 deterministic records ending now, going back daily. Pagination + cursor work identically to live. |
+| `GET /v1/company/{domain}/cohort` | 12 synthetic members named `cohort-NN.test`, spread around the target. |
+| `GET /v1/company/{domain}/confidence` | Per-domain canned band + completeness + missing-signal list. |
+| `GET /v1/distribution` | 12-domain mini-universe with realistic histograms + rating mix + profile split. |
+| `GET /v1/movers` | Canned top-5 gainers + decliners across all windows (sandbox doesn't differentiate by window). |
+| `GET /v1/signals` | Identical to live — the 67-signal manifest is deterministic. |
+| `GET /v1/usage` | Per-tier canned counters at a healthy mid-month position. |
+
+## Rejection rules
+
+- **Test domain on a live key** → `400 { "error": "test domains require a ki_test_ key" }`
+- **Real domain on a test key** → `400 { "error": "sandbox: only ['acme.test', 'cohort.test', 'struggling.test', 'unicorn.test'] supported" }`
+- **Async cold scoring (`wait=false`) is gated to Growth+** — using a test key on Free/Starter still triggers the tier check.
+
+## When to graduate
+
+When your integration is rendering canned data correctly across every shape you care about, swap your key prefix to `ki_live_` and run the same call against a real domain. The shapes are identical (minus the `mode` field). The first real call typically costs us 30–60 seconds of cold-scoring time and a few dollars of fetcher spend — be intentional about which company you score first.

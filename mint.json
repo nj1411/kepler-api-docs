@@ -1,0 +1,81 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Kepler Insights API",
+  "logo": {
+    "light": "/logo.png",
+    "dark":  "/logo.png"
+  },
+  "favicon": "/favicon.png",
+  "colors": {
+    "primary":   "#C9A14A",
+    "light":     "#E4C674",
+    "dark":      "#0A0A0C",
+    "background": { "dark": "#000000", "light": "#FFFFFF" }
+  },
+  "topbarCtaButton": {
+    "name": "Get an API key",
+    "url": "https://api.keplerinsights.us"
+  },
+  "topbarLinks": [
+    { "name": "Status",  "url": "https://status.keplerinsights.us" },
+    { "name": "Support", "url": "mailto:noah@keplerinsights.us" }
+  ],
+  "anchors": [
+    {
+      "name": "API reference",
+      "icon": "code",
+      "url": "endpoints"
+    },
+    {
+      "name": "Status",
+      "icon": "signal",
+      "url": "https://status.keplerinsights.us"
+    },
+    {
+      "name": "Developer console",
+      "icon": "key",
+      "url": "https://api.keplerinsights.us"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Get started",
+      "pages": [
+        "introduction",
+        "quickstart",
+        "authentication",
+        "sandbox",
+        "tiers",
+        "economics",
+        "errors"
+      ]
+    },
+    {
+      "group": "Endpoints",
+      "pages": [
+        "endpoints/score",
+        "endpoints/score-get",
+        "endpoints/async",
+        "endpoints/jobs",
+        "endpoints/history",
+        "endpoints/cohort",
+        "endpoints/confidence",
+        "endpoints/distribution",
+        "endpoints/movers",
+        "endpoints/signals",
+        "endpoints/usage"
+      ]
+    }
+  ],
+  "openapi": "openapi.yaml",
+  "footerSocials": {},
+  "feedback": {
+    "thumbsRating": true,
+    "suggestEdit":  false
+  },
+  "analytics": {},
+  "metadata": {
+    "og:title":       "Kepler Insights API",
+    "og:description": "Curated company-scoring intelligence over a 67-signal engine."
+  }
+}

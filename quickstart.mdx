@@ -1,0 +1,76 @@
+---
+title: "Quickstart"
+description: "Score your first company in 5 minutes."
+---
+
+## 1. Get an API key
+
+Sign in at [api.keplerinsights.us](https://api.keplerinsights.us) (magic-link email or passkey), then create a key. You'll get one **live key** (`ki_live_…`) and access to **test keys** (`ki_test_…`) for sandbox development.
+
+The raw key is shown **once** at creation. Save it in your secrets manager — Kepler stores only a hash and cannot recover it.
+
+## 2. Make your first call (sandbox)
+
+```bash
+curl https://api.keplerinsights.us/v1/score \
+  -H "X-API-Key: ki_test_YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "acme.test"}'
+```
+
+Response:
+
+```json
+{
+  "mode": "sandbox",
+  "domain": "acme.test",
+  "scored_at": "2026-05-12T18:30:00Z",
+  "ki_rating": "KI-1",
+  "composite_score": 67.2,
+  "scale_premium": 4.1,
+  "buckets": {
+    "team_structure": 68.0,
+    "market_position": 71.5,
+    "momentum_tailwinds": 64.3,
+    "financial_health": 61.0
+  },
+  "rank": { "percentile": 92, "cohort_size": 540 }
+}
+```
+
+The `mode: sandbox` field tells you this is canned data. See [Sandbox](/sandbox) for the four test domains and what each one represents.
+
+## 3. Score a real company
+
+Swap your key prefix to `ki_live_` and use a real domain:
+
+```bash
+curl https://api.keplerinsights.us/v1/score \
+  -H "X-API-Key: ki_live_YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "stripe.com"}'
+```
+
+If Kepler has a recent record (within your tier's freshness window — 24h on Starter, 6h on Growth, 1h on Scale), you get it back instantly with `x_kepler.cache_status: "cached"`. Otherwise a cold run kicks off and the call blocks for up to 60 seconds.
+
+<Note>
+On Free and Starter, cold runs always block (sync). On Growth and above, you can opt into [async polling](/endpoints/async) with `wait=false`.
+</Note>
+
+## 4. Read the history
+
+```bash
+curl "https://api.keplerinsights.us/v1/score/stripe.com/history?limit=10" \
+  -H "X-API-Key: ki_live_YOUR_KEY"
+```
+
+Returns the 10 most recent scoring runs as a time-series. Use the `next_cursor` field for pagination.
+
+## 5. What to read next
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/authentication">Key prefixes, rotation, security model.</Card>
+  <Card title="Sandbox" icon="flask" href="/sandbox">The 4 canned test domains.</Card>
+  <Card title="Tiers" icon="layer-group" href="/tiers">Quotas, freshness windows, async eligibility.</Card>
+  <Card title="Errors" icon="circle-exclamation" href="/errors">Every code we return + how to recover.</Card>
+</CardGroup>

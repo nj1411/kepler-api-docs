@@ -1,0 +1,78 @@
+---
+title: "Errors"
+description: "Every code the API returns + how to recover."
+---
+
+Every error response has the same shape:
+
+```json
+{
+  "error":   "stable_string_code",
+  "message": "Human-readable hint",
+  "reason":  "Optional extra context (rate-limit endpoints)"
+}
+```
+
+Branch on `error`, not on `message`. The `error` string is stable across versions; `message` may be tightened or expanded.
+
+## 4xx — caller errors
+
+| Status | `error` | Cause | Recover |
+|---|---|---|---|
+| **400** | `body.domain required` | POST body had no `domain` field. | Add it. |
+| **400** | `async_requires_growth` | `wait=false` on Free/Starter. | Upgrade tier, or omit `wait` (sync path is on every tier). |
+| **400** | `sandbox: only [...] supported` | Live domain with a test key. | Use a `ki_test_` key for sandbox, `ki_live_` key for real. |
+| **400** | `test domains require a ki_test_ key` | Test domain with a live key. | Same — match domain to key prefix. |
+| **400** | `invalid_cursor` | History pagination cursor malformed. | Drop the cursor (start over) or use the `next_cursor` we returned. |
+| **400** | `window must be one of ['7d','30d','90d']` | Bad `?window=` value on `/v1/movers`. | Use a supported value. |
+| **401** | `unauthorized` | Missing or invalid `X-API-Key`. | Check the header is set and the key is active. Allow up to 5 min for revocations to propagate. |
+| **403** | `free_tier_sandbox_only` | Live key on Free tier attempted a real-domain score. The Free trial is sandbox-only. | Use a `ki_test_` key against the 4 [canned test domains](/sandbox), or upgrade to Starter. |
+| **403** | (varies) | Job belongs to a different caller. | Job IDs aren't shareable across keys; check you're polling with the same account that started the job. |
+| **404** | `no score available for this domain` | `GET /v1/score/{domain}` against a never-scored domain. | Trigger one with `POST /v1/score`. |
+| **404** | `no_history` | Same shape, history endpoint. | Trigger an initial score. |
+| **404** | `job not found` | Unknown or expired (>30d) job ID. | Re-run `POST /v1/score?wait=false`. |
+| **429** | `cold_budget_exhausted` (`reason: monthly_cap`) | Account exhausted its tier's monthly cold-call budget. v1.0 is flat-only — no overage. | Upgrade to the next tier, or wait for the next monthly reset (`Retry-After` header gives seconds remaining). v1.5 will add opt-in metered overage. |
+| **429** | `rate limited` (`reason: per_key_cold_1h`) | This key hit 200 cold calls in 1 hour. | Wait — `Retry-After` header gives seconds until reset. |
+| **429** | `rate limited` (`reason: account_cold_24h`) | Account hit 2× tier monthly cold cap inside 24h. | Wait, or email support if legitimate spike. |
+
+## 5xx — server / pipeline errors
+
+| Status | `error` | Cause | Recover |
+|---|---|---|---|
+| **500** | `internal error` | Unhandled exception. | Retry once. If persistent, email support with `requestId` from headers. |
+| **500** | `sandbox_invariant_violated` | A sandbox key reached a live-path codepath. **Should never fire** — alerts us when it does. | Retry; email support so we can investigate the regression. |
+| **502** | `scoring failed` | Cold pipeline ran but the engine couldn't produce a score (insufficient data, fetcher exhaustion). Response includes `execution_arn` for support correlation. | Try a different domain, or wait a few hours and retry — fetcher credit exhaustion clears on the daily rollover. |
+| **504** | `scoring timeout` | Cold pipeline exceeded the 60s sync budget. The run is still going server-side. | Retry `GET /v1/score/{domain}` in ~30s — the result will land in the cache when the SFN execution completes. Or use the async path (`wait=false`, Growth+). |
+
+## How to handle 504s gracefully
+
+The pattern that works:
+
+```python
+import time, requests
+
+def score(domain, key):
+    r = requests.post("https://api.keplerinsights.us/v1/score",
+                      headers={"X-API-Key": key},
+                      json={"domain": domain})
+    if r.status_code == 200:
+        return r.json()
+    if r.status_code == 504:
+        # Background run is in flight — poll the cached endpoint
+        for _ in range(20):
+            time.sleep(5)
+            r2 = requests.get(f"https://api.keplerinsights.us/v1/score/{domain}",
+                              headers={"X-API-Key": key})
+            if r2.status_code == 200:
+                return r2.json()
+        raise TimeoutError("cold scoring exceeded 2-minute wall time")
+    r.raise_for_status()
+```
+
+If you're on Growth+, prefer [async scoring](/endpoints/async) — same pattern but server-side, with explicit job IDs.
+
+## What we never do
+
+- **Surface fetcher errors directly.** A Crustdata timeout becomes a `data_warnings` entry in `GET /v1/company/{domain}/confidence`, not a 5xx. The score is still produced.
+- **Return partial data on 200.** A 200 response always has the full schema. Missing data appears as neutral defaults (signal score ≈ 50) flagged in `confidence`.
+- **Auto-retry your call on a 4xx.** If you sent bad input, retrying doesn't help.

@@ -1,0 +1,57 @@
+---
+title: "GET /v1/distribution"
+openapi: "GET /v1/distribution"
+description: "Universe-wide score distribution: histograms, rating mix, profile split."
+---
+
+The shape of the entire scored universe. Use it to position any individual score against everyone — "is 67 in the top 10%?" — and to render aggregate dashboards.
+
+## When to use it
+
+- Render a histogram of scores with your target's position marked.
+- Sanity-check whether a tier (`KI-1+`) is rare or common in the current universe.
+- Compare growth vs. established profile distributions.
+
+## Response
+
+```json
+{
+  "pipeline_version": "phase5-preflight",
+  "universe": {
+    "count": 540,
+    "mean": 54.3, "p50": 53.5, "p90": 76.0,
+    "stddev": 16.8, "min": 28.7, "max": 79.4,
+    "composite_hist": [
+      { "range": "0-5",   "count": 0 },
+      { "range": "5-10",  "count": 0 },
+      ...
+      { "range": "95-100","count": 0 }
+    ],
+    "scale_premium_hist": [
+      { "range": "0-1",   "count": 380 },
+      { "range": "1-2",   "count": 88 },
+      ...
+    ],
+    "rating_dist": {
+      "KI-1+": 6, "KI-1": 22, "KI-2+": 78, "KI-2": 142,
+      "KI-3":  198, "KI-4": 78, "KI-5": 16
+    },
+    "profile_split": { "growth": 414, "established": 116, "unclassified": 10 }
+  }
+}
+```
+
+## Bin granularity
+
+- **Composite:** 20 bins of width 5 (`0-5`, `5-10`, …, `95-100`).
+- **Scale premium:** 12 bins of width 1 (`0-1`, `1-2`, …, `11-12`).
+
+If you need finer resolution, paginate `/v1/score/{domain}/history` over a representative sample of domains and compute it yourself. The histogram here is fixed-shape so we can cache it cheaply.
+
+## `pipeline_version`
+
+The universe is filtered to records produced under the current pipeline version (e.g. `phase5-preflight`). When Kepler ships a major engine change, this version bumps and the universe is re-seeded as new records land. Don't compare counts across pipeline versions — they're effectively different datasets.
+
+## Caching
+
+Served from a 10-minute in-memory cache (per Lambda container). Two calls in the same minute will likely return the same `count` even if a new scoring run lands between them.

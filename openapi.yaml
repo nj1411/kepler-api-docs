@@ -1,0 +1,644 @@
+openapi: 3.1.0
+info:
+  title: Kepler Insights API
+  version: "1.0.0"
+  summary: Curated company-scoring intelligence over a 67-signal engine.
+  description: |
+    The Kepler Insights API exposes a curated subset of the Kepler scoring engine
+    over a stable REST surface. Every score is a composite over 67 signals organized
+    into 4 buckets (Team & Structure, Market Position, Momentum & Tailwinds,
+    Financial Health), with a separate scale premium that lifts established
+    companies whose underlying fundamentals justify a higher tier.
+
+    **Authentication.** All requests require a single header: `X-API-Key`.
+    Keys are issued from the developer console at `https://api.keplerinsights.us`.
+
+    **Sandbox.** Test keys prefixed `ki_test_` accept only the four canned
+    domains (`acme.test`, `unicorn.test`, `struggling.test`, `cohort.test`),
+    never invoke fetchers, and return deterministic responses tagged with
+    `mode: sandbox`. Live keys prefixed `ki_live_` reject test domains and
+    run against the real engine.
+
+    **Cold vs cached.** Scoring against a cold company can take 30–60 seconds
+    and costs us real money on fetchers + LLM enrichment. Cached calls
+    are nearly free. The API surfaces this via two paths: `GET /v1/score/{domain}`
+    is always cached (404 if no recent record exists), and `POST /v1/score`
+    decides per-call based on your tier's freshness window. Cold spend is
+    bounded by per-tier monthly caps + circuit breakers.
+  contact:
+    name: Kepler Insights API support
+    email: noah@keplerinsights.us
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.keplerinsights.us
+    description: Production
+
+security:
+  - apiKey: []
+
+tags:
+  - name: scoring
+    description: Score a company and retrieve the latest result.
+  - name: history
+    description: Time-series of past scoring runs for a single company.
+  - name: company
+    description: Per-company analytics (cohort, confidence).
+  - name: universe
+    description: Distribution + movers across the full scored universe.
+  - name: meta
+    description: Signal manifest + caller usage + async job tracking.
+
+paths:
+  /v1/score:
+    post:
+      tags: [scoring]
+      summary: Score a company (cold or cached).
+      description: |
+        Returns the latest score for `domain`. If a cached record exists within
+        your tier's freshness window, returns it (no fetcher spend, no cold-call
+        usage). Otherwise initiates a cold scoring run.
+
+        **Sync path (default, `wait=true`):** waits up to 60 seconds for the
+        cold run. If it completes, returns 200 with the fresh score. If it
+        exceeds the budget, returns 504 with an `execution_arn` — retry
+        `GET /v1/score/{domain}` after ~30s, or use the async path.
+
+        **Async path (`wait=false`, Growth tier and above):** returns 202
+        immediately with a `job_id`. Poll `GET /v1/jobs/{job_id}` until
+        `status: complete`. Each tier's monthly cold-call budget applies to
+        both paths; async doesn't bypass the meter.
+
+        **Freshness windows by tier:** free 7d, starter 24h, growth 6h,
+        scale 1h, enterprise 15min.
+      operationId: scoreCompany
+      parameters:
+        - in: query
+          name: wait
+          schema: { type: string, enum: [true, false], default: "true" }
+          description: Set to `false` for the async path (Growth+). Body field `wait` also accepted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain]
+              properties:
+                domain:
+                  type: string
+                  example: stripe.com
+                force_fresh:
+                  type: boolean
+                  description: Enterprise-only. Forces a cold run even if a fresh record exists.
+                  default: false
+                wait:
+                  type: boolean
+                  description: Mirrors `?wait=` query. Body wins if both set.
+                  default: true
+      responses:
+        "200":
+          description: Score (sync). Cached or fresh-cold.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScoreResponse" }
+        "202":
+          description: Async job started (Growth+, `wait=false`).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job_id, status, domain, poll_url]
+                properties:
+                  job_id:   { type: string, format: uuid }
+                  status:   { type: string, enum: [pending] }
+                  domain:   { type: string }
+                  poll_url: { type: string, example: "/v1/jobs/9f0c…" }
+        "400":
+          description: Validation error (missing domain, async requested on Free/Starter, etc.)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: Free trial — live scoring not included. Use a `ki_test_` key, or upgrade.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502":
+          description: Cold scoring run finished but failed (fetcher exhaustion, scoring error).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "504":
+          description: Cold scoring exceeded the 60s sync budget. Retry GET or use async.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/score/{domain}:
+    get:
+      tags: [scoring]
+      summary: Get latest cached score for a company.
+      description: |
+        Cached-only path. Returns the most recent stored record for `domain`
+        (no cold-run trigger). 404 if no record exists. Useful when polling
+        after a 504 from the sync `POST /v1/score` endpoint.
+      operationId: getScore
+      parameters:
+        - $ref: "#/components/parameters/DomainPath"
+      responses:
+        "200":
+          description: Latest score.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScoreResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: No score on file. Trigger one with `POST /v1/score`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/score/{domain}/history:
+    get:
+      tags: [history]
+      summary: Time-series of past scores for a company.
+      operationId: getHistory
+      parameters:
+        - $ref: "#/components/parameters/DomainPath"
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+          description: Opaque pagination cursor. Pass back `next_cursor` from the previous response.
+      responses:
+        "200":
+          description: Paginated history (DESC by scored_at).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [domain, records]
+                properties:
+                  mode:        { type: string, description: "Present and = `sandbox` only when using a ki_test_ key." }
+                  domain:      { type: string }
+                  records:
+                    type: array
+                    items: { $ref: "#/components/schemas/HistoryRecord" }
+                  next_cursor: { type: string, description: Set when more pages exist. Pass into `cursor` on the next call. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/company/{domain}/cohort:
+    get:
+      tags: [company]
+      summary: Sector + geo + business-profile-matched cohort comparison.
+      description: |
+        Returns where the target ranks against companies sharing its sector,
+        geo scope, and growth/established profile. Drawn from the kepler-brain
+        events table; refresh interval depends on universe size (typically <10s).
+      operationId: getCohort
+      parameters:
+        - $ref: "#/components/parameters/DomainPath"
+      responses:
+        "200":
+          description: Cohort stats + member list (capped at 200).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CohortResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Target has no scored record yet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/company/{domain}/confidence:
+    get:
+      tags: [company]
+      summary: Confidence band + data-completeness diagnostics for a score.
+      description: |
+        How much of the score is grounded in real data vs neutral fallbacks.
+        Returns `band` (high/medium/directional), completeness percentage,
+        any failed fetchers, and the signals scoring at the neutral default.
+      operationId: getConfidence
+      parameters:
+        - $ref: "#/components/parameters/DomainPath"
+      responses:
+        "200":
+          description: Confidence breakdown.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConfidenceResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: No score on file.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/distribution:
+    get:
+      tags: [universe]
+      summary: Universe-wide score distribution.
+      description: |
+        Returns the composite + scale premium histograms, KI-rating mix, and
+        growth/established profile split across every domain Kepler has scored
+        on the current pipeline version. Use to position any single company
+        against the full universe rather than just its cohort.
+      operationId: getDistribution
+      responses:
+        "200":
+          description: Universe distribution.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DistributionResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/movers:
+    get:
+      tags: [universe]
+      summary: Top gainers and decliners across the universe.
+      description: |
+        Top 20 gainers and 20 decliners by composite-score delta over the
+        chosen window. Response is cached server-side for 5 minutes per
+        `(pipeline_version, window)` pair.
+      operationId: getMovers
+      parameters:
+        - in: query
+          name: window
+          required: true
+          schema: { type: string, enum: [7d, 30d, 90d], default: 30d }
+      responses:
+        "200":
+          description: Top movers.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MoversResponse" }
+        "400":
+          description: Bad `window` value.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/signals:
+    get:
+      tags: [meta]
+      summary: The 67-signal schema manifest.
+      description: |
+        Read-only manifest of every signal the engine scores. Use to render
+        bucket / category breakdowns alongside `signal_scores` from a stored
+        record. Identical content in sandbox + live (no `mode` field).
+      operationId: getSignals
+      responses:
+        "200":
+          description: Signals manifest.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SignalsManifest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/usage:
+    get:
+      tags: [meta]
+      summary: Your current monthly usage and tier limits.
+      description: |
+        Counters for the current calendar month. Does NOT increment usage
+        (mirrors Stripe's `/v1/subscription` no-side-effect pattern). Returns
+        a zero-counter shape if you haven't called the API yet this period.
+      operationId: getUsage
+      responses:
+        "200":
+          description: Usage state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UsageResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/jobs/{job_id}:
+    get:
+      tags: [meta]
+      summary: Poll an async scoring job.
+      description: |
+        Returns the current state of a job started by `POST /v1/score?wait=false`.
+        `status` advances `pending → complete | failed` on the first poll that
+        observes a terminal underlying execution. Settle is lazy: a never-polled
+        job stays `pending` in storage until its 30-day TTL.
+
+        On `complete`, the response includes `result_ref: {domain, scored_at}`
+        and `score_url: /v1/score/{domain}` — fetch the actual score there.
+      operationId: getJob
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Job state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: Job belongs to another caller. Job IDs are not shareable across keys.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Unknown job ID (or expired past 30-day TTL).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        Live keys are prefixed `ki_live_`, test keys `ki_test_`. Issue + revoke
+        keys at https://api.keplerinsights.us. Never embed a key in client-side
+        code — every endpoint is backend-to-API only.
+
+  parameters:
+    DomainPath:
+      in: path
+      name: domain
+      required: true
+      schema: { type: string }
+      example: stripe.com
+      description: Bare hostname. Strips a leading `www.` and any URL scheme automatically.
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid `X-API-Key`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    RateLimited:
+      description: |
+        Rate-limit response. `error` distinguishes the cause:
+        - `cold_budget_exhausted` — monthly cold-call cap hit. Retry-After is seconds until the next monthly reset.
+        - `rate limited` (`reason: per_key_cold_1h`) — 200-cold-calls-per-hour-per-key breaker.
+        - `rate limited` (`reason: account_cold_24h`) — 2× tier monthly cap inside any 24h window.
+      headers:
+        Retry-After:
+          schema: { type: integer }
+          description: Seconds until you can retry.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:    { type: string, example: "unauthorized" }
+        message:  { type: string }
+        reason:   { type: string, description: Additional context for rate-limit responses. }
+
+    Buckets:
+      type: object
+      description: The 4 KI buckets. Each is 0–100.
+      properties:
+        team_structure:     { type: number, format: float, minimum: 0, maximum: 100 }
+        market_position:    { type: number, format: float, minimum: 0, maximum: 100 }
+        momentum_tailwinds: { type: number, format: float, minimum: 0, maximum: 100 }
+        financial_health:   { type: number, format: float, minimum: 0, maximum: 100 }
+
+    Rank:
+      type: object
+      properties:
+        percentile:  { type: integer, minimum: 0, maximum: 100 }
+        cohort_size: { type: integer, minimum: 0 }
+
+    XKeplerMeta:
+      type: object
+      description: Caller-facing metadata. Stable across versions.
+      properties:
+        tier:                   { type: string, enum: [free, starter, growth, scale, enterprise] }
+        cache_status:           { type: string, enum: [cached, cold] }
+        freshness_window_hours: { type: number }
+
+    ScoreResponse:
+      type: object
+      required: [domain, scored_at, ki_rating, composite_score, buckets]
+      properties:
+        mode:            { type: string, description: "Present and = `sandbox` only with a ki_test_ key." }
+        domain:          { type: string }
+        scored_at:       { type: string, format: date-time }
+        ki_rating:       { type: string, enum: ["KI-1+", "KI-1", "KI-2+", "KI-2", "KI-3", "KI-4", "KI-5"] }
+        composite_score: { type: number, format: float, minimum: 0, maximum: 100 }
+        scale_premium:   { type: number, format: float, minimum: 0, maximum: 12, description: "Up to ~12 pts for established mega-caps; up to ~6 pts for growth profile." }
+        buckets:         { $ref: "#/components/schemas/Buckets" }
+        rank:            { $ref: "#/components/schemas/Rank" }
+        x_kepler:        { $ref: "#/components/schemas/XKeplerMeta" }
+
+    HistoryRecord:
+      type: object
+      properties:
+        scored_at:             { type: string, format: date-time }
+        composite_score:       { type: number, format: float }
+        scale_premium:         { type: number, format: float }
+        ki_rating:             { type: string }
+        momentum_index:        { type: number, format: float, description: "Smoothed rate-of-change indicator over the last few scoring runs." }
+        buckets:               { $ref: "#/components/schemas/Buckets" }
+        data_completeness_pct: { type: integer, minimum: 0, maximum: 100 }
+
+    CohortResponse:
+      type: object
+      properties:
+        mode:   { type: string }
+        target:
+          type: object
+          properties:
+            domain:           { type: string }
+            company_name:     { type: string }
+            composite_score:  { type: number }
+            ki_rating:        { type: string }
+            business_profile: { type: string, enum: [growth, established] }
+            context:
+              type: object
+              properties:
+                sector:    { type: string }
+                geo_scope: { type: string }
+        cohort:
+          type: object
+          description: Aggregate stats over the cohort (target excluded for percentile math).
+          properties:
+            count:      { type: integer }
+            mean:       { type: number }
+            p50:        { type: number }
+            p90:        { type: number }
+            stddev:     { type: number }
+            min:        { type: number }
+            max:        { type: number }
+            rank:       { type: integer, description: 1-indexed position of target inside the cohort (1 = top). }
+            percentile: { type: integer, minimum: 0, maximum: 100 }
+        bucket_means:
+          type: object
+          description: Per-bucket comparison vs cohort mean.
+          additionalProperties:
+            type: object
+            properties:
+              target: { type: number }
+              cohort: { type: number }
+              delta:  { type: number }
+        members:
+          type: array
+          maxItems: 200
+          description: Cohort members, sorted DESC by composite_score.
+          items:
+            type: object
+            properties:
+              domain:           { type: string }
+              company_name:     { type: string }
+              composite_score:  { type: number }
+              ki_rating:        { type: string }
+              business_profile: { type: string }
+
+    ConfidenceResponse:
+      type: object
+      properties:
+        mode:             { type: string }
+        domain:           { type: string }
+        scored_at:        { type: string, format: date-time }
+        band:             { type: string, enum: [high, medium, directional] }
+        completeness_pct: { type: integer, minimum: 0, maximum: 100 }
+        failed_fetchers:  { type: array, items: { type: string, enum: [crustdata, pdl, dataforseo, newsapi] } }
+        data_warnings:    { type: array, items: { type: string } }
+        missing_signals:  { type: array, items: { type: string }, description: "Signals currently scoring at the neutral 50 fallback." }
+
+    Histogram:
+      type: array
+      items:
+        type: object
+        properties:
+          range: { type: string, example: "60-65" }
+          count: { type: integer }
+
+    DistributionResponse:
+      type: object
+      properties:
+        mode:             { type: string }
+        pipeline_version: { type: string, example: "phase5-preflight" }
+        universe:
+          type: object
+          properties:
+            count:               { type: integer }
+            mean:                { type: number }
+            p50:                 { type: number }
+            p90:                 { type: number }
+            stddev:              { type: number }
+            min:                 { type: number }
+            max:                 { type: number }
+            composite_hist:      { $ref: "#/components/schemas/Histogram" }
+            scale_premium_hist:  { $ref: "#/components/schemas/Histogram" }
+            rating_dist:
+              type: object
+              additionalProperties: { type: integer }
+            profile_split:
+              type: object
+              properties:
+                growth:       { type: integer }
+                established:  { type: integer }
+                unclassified: { type: integer }
+
+    MoverRow:
+      type: object
+      properties:
+        domain:          { type: string }
+        company_name:    { type: string }
+        composite_now:   { type: number }
+        composite_then:  { type: number }
+        delta:           { type: number, description: "composite_now − composite_then" }
+        ki_rating_now:   { type: string }
+        ki_rating_then:  { type: string }
+
+    MoversResponse:
+      type: object
+      properties:
+        mode:         { type: string }
+        window:       { type: string, enum: [7d, 30d, 90d] }
+        window_start: { type: string, format: date-time }
+        window_end:   { type: string, format: date-time }
+        gainers:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/MoverRow" }
+        decliners:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/MoverRow" }
+
+    Signal:
+      type: object
+      properties:
+        key:           { type: string, example: "founder_years_experience" }
+        label:         { type: string }
+        bucket:        { type: string, enum: [team_structure, market_position, momentum_tailwinds, financial_health] }
+        category:      { type: string }
+        weight:        { type: number }
+        actionability: { type: string, enum: [actionable, slow_actionable, immutable] }
+        description:   { type: string }
+
+    SignalsManifest:
+      type: object
+      properties:
+        version: { type: string }
+        signals:
+          type: array
+          items: { $ref: "#/components/schemas/Signal" }
+
+    TierLimits:
+      type: object
+      properties:
+        cached_calls_included:  { type: integer, nullable: true, description: "null = unmetered (Enterprise / admin)." }
+        cold_calls_included:    { type: integer, nullable: true, description: "Monthly cold-call budget. v1.0 is flat-only: exceeding this returns 429 cold_budget_exhausted." }
+        freshness_window_hours: { type: number }
+
+    UsageResponse:
+      type: object
+      properties:
+        mode:               { type: string }
+        user_id:            { type: string }
+        period:             { type: string, example: "2026-05" }
+        tier:               { type: string }
+        total_calls:        { type: integer }
+        cold_calls:         { type: integer }
+        cached_calls:       { type: integer }
+        last_reset:         { type: string, format: date-time }
+        next_reset:         { type: string, format: date-time }
+        tier_limits:        { $ref: "#/components/schemas/TierLimits" }
+
+    JobResponse:
+      type: object
+      properties:
+        mode:         { type: string }
+        job_id:       { type: string, format: uuid }
+        status:       { type: string, enum: [pending, complete, failed] }
+        domain:       { type: string }
+        created_at:   { type: string, format: date-time }
+        completed_at: { type: string, format: date-time, nullable: true }
+        result_ref:
+          type: object
+          nullable: true
+          description: Present on `complete`. Use `score_url` to fetch the actual record.
+          properties:
+            domain:    { type: string }
+            scored_at: { type: string, format: date-time }
+        score_url:
+          type: string
+          nullable: true
+          example: "/v1/score/stripe.com"
+        failure_reason:
+          type: string
+          nullable: true
+          enum: [sfn_failed, sfn_timed_out, sfn_aborted, scoring_completed_no_record]
