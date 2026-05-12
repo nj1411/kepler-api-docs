@@ -14,11 +14,10 @@
   },
   "topbarCtaButton": {
     "name": "Get an API key",
-    "url": "https://api.keplerinsights.us"
+    "url": "https://console.keplerinsights.us"
   },
   "topbarLinks": [
-    { "name": "Status",  "url": "https://status.keplerinsights.us" },
-    { "name": "Support", "url": "mailto:noah@keplerinsights.us" }
+    { "name": "Support", "url": "mailto:team@keplerinsights.us" }
   ],
   "anchors": [
     {
@@ -27,14 +26,9 @@
       "url": "endpoints"
     },
     {
-      "name": "Status",
-      "icon": "signal",
-      "url": "https://status.keplerinsights.us"
-    },
-    {
       "name": "Developer console",
       "icon": "key",
-      "url": "https://api.keplerinsights.us"
+      "url": "https://console.keplerinsights.us"
     }
   ],
   "navigation": [
