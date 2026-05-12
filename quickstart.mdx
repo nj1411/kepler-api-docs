@@ -51,10 +51,10 @@ curl https://api.keplerinsights.us/v1/score \
   -d '{"domain": "stripe.com"}'
 ```
 
-If Kepler has a recent record (within your tier's freshness window — 24h on Starter, 6h on Growth, 1h on Scale), you get it back instantly with `x_kepler.cache_status: "cached"`. Otherwise a cold run kicks off and the call blocks for up to 60 seconds.
+If Kepler has a recent record (within your tier's freshness window — 24h on Starter, 6h on Growth, 1h on Scale), you get it back instantly as a `200` with `x_kepler.cache_status: "cached"`. Otherwise the server returns `202 Accepted` with a `job_id` — poll `GET /v1/jobs/{job_id}` until `status: complete`, then fetch the result with `GET /v1/score/{domain}`. See [Async scoring](/endpoints/async) for the full polling pattern.
 
 <Note>
-On Free and Starter, cold runs always block (sync). On Growth and above, you can opt into [async polling](/endpoints/async) with `wait=false`.
+The official SDKs hide the polling for you — `Kepler#score()` blocks transparently across both response shapes. Branch on shape only if you're calling the API directly: response body has `composite_score` → score inline, has `job_id` → poll.
 </Note>
 
 ## 4. Read the history

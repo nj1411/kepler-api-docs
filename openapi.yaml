@@ -54,21 +54,23 @@ paths:
   /v1/score:
     post:
       tags: [scoring]
-      summary: Score a company (cold or cached).
+      summary: Score a company. Cached returns inline, cold returns a job.
       description: |
-        Returns the latest score for `domain`. If a cached record exists within
-        your tier's freshness window, returns it (no fetcher spend, no cold-call
-        usage). Otherwise initiates a cold scoring run.
+        Returns the latest score for `domain`. Two response shapes:
 
-        **Sync path (default, `wait=true`):** waits up to 60 seconds for the
-        cold run. If it completes, returns 200 with the fresh score. If it
-        exceeds the budget, returns 504 with an `execution_arn` — retry
-        `GET /v1/score/{domain}` after ~30s, or use the async path.
+        - **200 OK** when a cached record is fresh under your tier's freshness
+          window. Score returned inline. No fetcher spend, no cold-call usage.
 
-        **Async path (`wait=false`, Growth tier and above):** returns 202
-        immediately with a `job_id`. Poll `GET /v1/jobs/{job_id}` until
-        `status: complete`. Each tier's monthly cold-call budget applies to
-        both paths; async doesn't bypass the meter.
+        - **202 Accepted** when no fresh record exists. The server starts a
+          cold scoring run and returns `{job_id, poll_url}`. Poll
+          `GET /v1/jobs/{job_id}` until `status: complete`, then read the
+          score via `GET /v1/score/{domain}`. Cold runs typically take
+          25–90 seconds.
+
+        Auto-queue applies to all paid tiers. Free tier cannot run cold
+        (returns 403 `free_tier_sandbox_only`). The `wait` parameter is
+        accepted for backwards compatibility but is now a no-op — cold is
+        always async.
 
         **Freshness windows by tier:** free 7d, starter 24h, growth 6h,
         scale 1h, enterprise 15min.
@@ -77,7 +79,8 @@ paths:
         - in: query
           name: wait
           schema: { type: string, enum: [true, false], default: "true" }
-          description: Set to `false` for the async path (Growth+). Body field `wait` also accepted.
+          description: Accepted for backwards compatibility, ignored. Cold is always async.
+          deprecated: true
       requestBody:
         required: true
         content:
@@ -95,16 +98,17 @@ paths:
                   default: false
                 wait:
                   type: boolean
-                  description: Mirrors `?wait=` query. Body wins if both set.
+                  description: Accepted for backwards compatibility, ignored. Cold is always async.
                   default: true
+                  deprecated: true
       responses:
         "200":
-          description: Score (sync). Cached or fresh-cold.
+          description: Cached score (fresh under your tier's window).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ScoreResponse" }
         "202":
-          description: Async job started (Growth+, `wait=false`).
+          description: Cold scoring job started. Poll `poll_url` until complete.
           content:
             application/json:
               schema:
@@ -116,7 +120,7 @@ paths:
                   domain:   { type: string }
                   poll_url: { type: string, example: "/v1/jobs/9f0c…" }
         "400":
-          description: Validation error (missing domain, async requested on Free/Starter, etc.)
+          description: Validation error (missing or malformed domain).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -127,13 +131,8 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "429": { $ref: "#/components/responses/RateLimited" }
-        "502":
-          description: Cold scoring run finished but failed (fetcher exhaustion, scoring error).
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-        "504":
-          description: Cold scoring exceeded the 60s sync budget. Retry GET or use async.
+        "500":
+          description: Scoring engine unavailable (Step Functions or job tracking failure).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -144,8 +143,9 @@ paths:
       summary: Get latest cached score for a company.
       description: |
         Cached-only path. Returns the most recent stored record for `domain`
-        (no cold-run trigger). 404 if no record exists. Useful when polling
-        after a 504 from the sync `POST /v1/score` endpoint.
+        (no cold-run trigger). 404 if no record exists. Use this after a job
+        from `POST /v1/score` reaches `status: complete` to fetch the actual
+        scorecard.
       operationId: getScore
       parameters:
         - $ref: "#/components/parameters/DomainPath"

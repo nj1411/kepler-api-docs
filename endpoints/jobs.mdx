@@ -4,7 +4,7 @@ openapi: "GET /v1/jobs/{job_id}"
 description: "Poll an async scoring job."
 ---
 
-Returns the current state of a job started by [`POST /v1/score?wait=false`](/endpoints/async).
+Returns the current state of a cold-scoring job. Jobs are created automatically by [`POST /v1/score`](/endpoints/score) when no fresh cached record exists.
 
 ## Status transitions
 

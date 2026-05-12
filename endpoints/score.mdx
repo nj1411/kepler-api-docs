@@ -1,64 +1,82 @@
 ---
 title: "POST /v1/score"
 openapi: "POST /v1/score"
-description: "Score a company. Cached if a recent record exists, otherwise cold."
+description: "Score a company. Cached returns inline; cold returns a job to poll."
 ---
 
-The primary scoring entry point. Returns the latest score for `domain` — either from cache (if a stored record is within your tier's freshness window) or by running a fresh cold pipeline.
+The primary scoring entry point. Returns the latest score for `domain` from cache when a stored record is within your tier's freshness window, **or starts a cold scoring job** when no fresh record exists.
 
-## When to use it
+## Two response shapes
 
-- You want the score for a specific company **right now**.
-- You don't already have a stored record, or it's stale for your purposes.
-- You're on Free / Starter — sync is the only path available.
+- **HTTP 200** — a cached score is available. Returned inline; ready to use.
+- **HTTP 202** — no fresh record. The server has started a cold scoring run and returned a `job_id`. Poll [`GET /v1/jobs/{job_id}`](/endpoints/jobs) until `status: "complete"`.
 
-If you have a `job_id` from an earlier async start, use [`GET /v1/jobs/{job_id}`](/endpoints/jobs) instead.
+Cold scoring runs typically take **25–90 seconds** end-to-end. They are billed when the job starts, not when you finish polling — abandoning a poll loop does not get you a refund.
 
-## Behavior
+## When you'll see each path
 
-```mermaid
-flowchart TD
-  A[POST /v1/score] --> B{Recent record exists<br/>within tier window?}
-  B -- yes --> C[200 cached]
-  B -- no  --> D[Start cold SFN execution]
-  D --> E{wait=false &<br/>Growth+ tier?}
-  E -- yes --> F[202 with job_id]
-  E -- no  --> G[Poll SFN up to 60s]
-  G --> H{Completed in time?}
-  H -- yes --> I[200 cold]
-  H -- no  --> J[504 — keep going server-side]
-```
+- Cached (200) — the dominant path. Most calls hit it; tier-determined freshness windows are designed so that customer traffic mostly reuses recent work.
+- Cold (202) — first time you've ever asked for `domain`, or the most recent record is older than your tier's window.
 
-## Example (Python)
+Your tier's freshness window:
+
+| Tier | Window |
+|---|---|
+| Free | 7 days (sandbox only — Free can't run live cold) |
+| Starter | 24 hours |
+| Growth | 6 hours |
+| Scale | 1 hour |
+| Enterprise | 15 minutes |
+
+## Example (Python SDK)
+
+The official SDK handles both shapes transparently. `score()` blocks until the score is ready, polling internally on the cold path.
 
 ```python
-import requests
+from kepler_insights import Kepler
 
-r = requests.post(
-    "https://api.keplerinsights.us/v1/score",
-    headers={"X-API-Key": "ki_live_..."},
-    json={"domain": "stripe.com"},
-    timeout=70,  # >60s cold budget + headroom
-)
-score = r.json()
-print(f"{score['domain']}: {score['ki_rating']} ({score['composite_score']:.1f})")
+k = Kepler(api_key="ki_live_...")
+
+score = k.score("stripe.com")               # blocks up to 180s on cold
+print(f"{score.domain}: {score.ki_rating} ({score.composite_score:.1f})")
+
+# Non-blocking — get the Job and poll yourself:
+job = k.start_score("acme-co.com")
+print(job.id)
+score = job.wait(timeout=240)
 ```
 
-## Example (curl, with async fallback)
+## Example (curl, manual polling)
 
 ```bash
-# Async on Growth+
-curl -X POST https://api.keplerinsights.us/v1/score?wait=false \
+# 1. Submit
+curl -X POST https://api.keplerinsights.us/v1/score \
   -H "X-API-Key: ki_live_..." \
   -H "Content-Type: application/json" \
-  -d '{"domain": "stripe.com"}'
+  -d '{"domain":"stripe.com"}'
 
-# → 202 { "job_id": "...", "status": "pending", "poll_url": "/v1/jobs/..." }
+# Cached response (200):
+# { "domain": "stripe.com", "ki_rating": "KI-1", "composite_score": 73.65, ... }
+
+# Cold response (202):
+# { "job_id": "679a9e32-...", "status": "pending",
+#   "domain": "stripe.com", "poll_url": "/v1/jobs/679a9e32-..." }
+
+# 2. Poll until terminal (cold only)
+curl https://api.keplerinsights.us/v1/jobs/679a9e32-... \
+  -H "X-API-Key: ki_live_..."
 ```
+
+Branch on the response: if the body has `composite_score`, you have the score inline. If it has `job_id`, queue a poll loop on the `poll_url`.
 
 ## Field notes
 
 - **`composite_score`** is 0–100, **not 0–10.** Easy mistake when reading.
 - **`scale_premium`** is a separate additive bonus (up to ~12 pts). It's already applied to `composite_score`; the field is broken out so you can show "47.0 composite + 4.1 scale premium" if you want.
 - **`rank`** is computed against the full universe Kepler has ever scored, not just the active cohort. Use [`/v1/company/{domain}/cohort`](/endpoints/cohort) for sector-matched comparison.
-- **`x_kepler.cache_status`** is `"cached"` or `"cold"` — use it to decide whether to surface a "last scored 4 hours ago" note in your UI.
+- **`x_kepler.cache_status`** is `"cached"` on the 200 path. On the 202 path, the eventual `GET /v1/jobs/{job_id}` → `score_url` response carries `cache_status: "cold"`.
+- **`wait` parameter** is accepted but ignored. Cold = async, always. The parameter is preserved so older client code doesn't break.
+
+## Sandbox behavior
+
+`ki_test_` keys against the 4 canned domains (`acme.test`, `unicorn.test`, `struggling.test`, `cohort.test`) always return inline 200. Sandbox has no cold path — there's nothing to queue. This means production code paths that branch on 202 won't be exercised in the sandbox. Test the polling path against a fresh live domain in staging before relying on it.

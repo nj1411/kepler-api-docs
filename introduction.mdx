@@ -20,7 +20,7 @@ The composite (0–100) maps to a **KI rating** from `KI-5` (early-stage) to `KI
 
 ## What you can do with it
 
-- **Score one company on demand.** `POST /v1/score` returns a fresh composite in 30–60 seconds (or instantly if a recent record is cached).
+- **Score one company on demand.** `POST /v1/score` returns inline if a record is cached for your tier; otherwise returns 202 + a job to poll (cold scoring typically settles in 25–90 seconds). The SDKs handle the polling for you.
 - **Track score history.** `GET /v1/score/{domain}/history` returns the full time-series — every scoring run for that company.
 - **Compare against a cohort.** `GET /v1/company/{domain}/cohort` returns sector + geo + profile-matched peers, ranked.
 - **Assess data confidence.** `GET /v1/company/{domain}/confidence` shows how much of the score is grounded in real data vs neutral fallbacks.
