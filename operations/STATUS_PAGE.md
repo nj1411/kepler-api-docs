@@ -1,8 +1,14 @@
 # Status page + synthetic monitoring plan
 
+> **🟡 DEFERRED to v1.5** (2026-05-12). v1.0 ships an inline real-time health widget on the dev console (`console.keplerinsights.us` top-right corner, 30-second poll via Netlify same-origin proxy to `/health` → API Gateway) plus a `noah@keplerinsights.us` support-email footer. Cost saved: ~$180/yr Instatus subscription. Trigger to revisit: ≥10 paying customers OR a customer explicitly asks "where's your status page?"
+
+**This document remains the runbook for when we DO want a dedicated status page.** Originally planned for launch, now reserved for the moment we actually need it.
+
+---
+
 **Provider chosen: Instatus** ($15/mo Personal tier).
 **URL on launch:** `https://status.keplerinsights.us`.
-**Wired up at:** coordinated launch event (same window as docs.keplerinsights.us, api.keplerinsights.us flip).
+**Wired up at:** when v1.5 trigger fires (see top of doc).
 
 Signup, DNS, and synthetic check provisioning are deferred. This document is the runbook for doing it.
 
@@ -27,7 +33,7 @@ The status page surfaces health per component, not per Lambda. End users care ab
 | Component | Backing Lambdas | "Operational" means |
 |---|---|---|
 | **Scoring API** | kepler-api-score, kepler-api-read, kepler-fetcher-orchestrator | All endpoints respond 2xx to the synthetic check; cold pipeline P95 < 90s. |
-| **Developer console** | kepler-api-key-mgmt, Ki_dev/api_site (Netlify) | Console loads + magic-link round-trip works. |
+| **Developer console** | kepler-api-key-mgmt, api_site (Netlify) | Console loads + magic-link round-trip works. |
 | **Documentation** | Mintlify hosting (docs.keplerinsights.us) | Docs site returns 200 on the homepage. |
 | **Scoring engine** | kepler-scoring-engine, fetchers | Engine processes a real domain successfully end-to-end every 6 hours (validation cron). |
 
@@ -98,7 +104,7 @@ Severity 1 (full outage, multiple components red):
 1. Acknowledge in Instatus within 5 min ("we're investigating")
 2. Email Kepler customers on the API in addition to the status page subscribers
 3. First update within 15 min — what's broken, what we're doing
-4. Post-incident: write a short post-mortem in `Ki_dev/docs/operations/incidents/YYYY-MM-DD-slug.md`
+4. Post-incident: write a short post-mortem in `docs_site/operations/incidents/YYYY-MM-DD-slug.md`
 
 Severity 2 (degraded, one component yellow):
 1. Acknowledge within 15 min

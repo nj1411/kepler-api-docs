@@ -8,8 +8,7 @@ Cached-only score lookup. Returns the freshest stored record, or `404` if Kepler
 
 ## When to use it
 
-- After a `504` from `POST /v1/score` — poll this until the cold run lands.
-- After a `202` from `POST /v1/score?wait=false` — though `GET /v1/jobs/{job_id}` is the canonical poll path and tells you when the run is done. This endpoint will silently keep returning the old record until the new one is written.
+- After a `202` from `POST /v1/score` — once `GET /v1/jobs/{job_id}` reports `status: "complete"`, call this endpoint (or use the `score_url` the job response hands you) to fetch the fresh score. The Python and TypeScript SDKs do this automatically inside `Kepler.score()`.
 - To re-render an existing UI without using a cold-call slot — calls to this endpoint count against your cached quota, not cold.
 
 ## What it does NOT do

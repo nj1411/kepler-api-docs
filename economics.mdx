@@ -52,7 +52,7 @@ We chose flat-only at launch for three reasons:
 
 ### Metered overage is on the v1.5 roadmap
 
-Power users — folks who want to occasionally burst beyond their tier without committing to an upgrade — are exactly who metered overage is designed for. We'll add it as a Stripe metered line item alongside the flat subscription once cold-call cost is stable for two consecutive weeks (the same gate that opens our closed beta). When it lands, it'll be:
+Power users — folks who want to occasionally burst beyond their tier without committing to an upgrade — are exactly who metered overage is designed for. We'll add it as a Stripe metered line item alongside the flat subscription once cold-call cost is stable for two consecutive weeks. When it lands, it'll be:
 
 - **Opt-in per account** — your existing flat subscription doesn't change unless you turn overage on.
 - **Per-tier rate published in advance** — you'll see what each overage cold call costs before enabling it.
@@ -67,7 +67,7 @@ Customers on the flat plan when v1.5 ships will be auto-eligible. Until then: pl
 
 **Pattern 2 — Pipeline screening.** You're scoring hundreds of new companies a month from an inbound list. Size the tier to your monthly volume — Growth's 250 cold calls covers ~8 new companies per workday. If you sustain higher than that, Scale is the right tier.
 
-**Pattern 3 — Reactive scoring.** A user enters a domain into your product; you score it. Use the async pattern (`wait=false`) and a job-poll loop on Growth+ so your request doesn't block 60s.
+**Pattern 3 — Reactive scoring.** A user enters a domain into your product; you score it. Cold paths return `202` + a `job_id` immediately, so your HTTP request stays under 1 second; poll `GET /v1/jobs/{job_id}` (or let the SDK handle it) to surface the result when ready.
 
 ## Margin transparency
 

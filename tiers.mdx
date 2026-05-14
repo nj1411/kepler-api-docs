@@ -36,9 +36,11 @@ When you call `POST /v1/score` and a recent record exists within your tier's fre
 
 Shorter windows = more cold runs = more cost. Tier prices reflect that.
 
-## Async eligibility
+## Async cold scoring
 
-`POST /v1/score?wait=false` is available on **Growth** tier and above. Free / Starter callers receive `400 { error: "async_requires_growth" }` if they request it. See [Async scoring](/endpoints/async) for the full polling loop.
+Cold scoring is always async on every paid tier. When `POST /v1/score` needs to run the cold pipeline, it returns `202` with a `job_id` and a `poll_url` — you then poll `GET /v1/jobs/{job_id}` until `status` flips to `complete`. The `wait` body field is accepted for backwards-compatibility but has no effect. The Python and TypeScript SDKs handle the polling automatically. See [Async scoring](/endpoints/async) for the loop, and [`GET /v1/jobs/{job_id}`](/endpoints/jobs) for the poll response shape.
+
+Free tier cannot run live cold paths at all — `ki_live_…` keys on Free are restricted to cached reads + sandbox.
 
 ## Circuit breakers
 
@@ -61,4 +63,4 @@ Every response includes an `x_kepler` block:
 }
 ```
 
-`cache_status: "cold"` means this call ran the cold pipeline and incremented your cold-call counter. `"cached"` means a stored record was returned.
+`cache_status: "cached"` means a stored record within your freshness window was returned. The cold pipeline doesn't return inline scores — it returns a `202` with a `job_id`. Once the job completes and you `GET /v1/score/{domain}`, the response again carries `cache_status: "cached"` since the fresh score is now in cache.

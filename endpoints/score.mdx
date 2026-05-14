@@ -74,7 +74,7 @@ Branch on the response: if the body has `composite_score`, you have the score in
 - **`composite_score`** is 0–100, **not 0–10.** Easy mistake when reading.
 - **`scale_premium`** is a separate additive bonus (up to ~12 pts). It's already applied to `composite_score`; the field is broken out so you can show "47.0 composite + 4.1 scale premium" if you want.
 - **`rank`** is computed against the full universe Kepler has ever scored, not just the active cohort. Use [`/v1/company/{domain}/cohort`](/endpoints/cohort) for sector-matched comparison.
-- **`x_kepler.cache_status`** is `"cached"` on the 200 path. On the 202 path, the eventual `GET /v1/jobs/{job_id}` → `score_url` response carries `cache_status: "cold"`.
+- **`x_kepler.cache_status`** is `"cached"` on every score body, including the one you fetch after a job completes — the fresh cold-pipeline result is written to cache before the response shape is constructed. The enum is reserved for a future sync-cold response shape; today only `"cached"` is emitted.
 - **`wait` parameter** is accepted but ignored. Cold = async, always. The parameter is preserved so older client code doesn't break.
 
 ## Sandbox behavior

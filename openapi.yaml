@@ -11,7 +11,7 @@ info:
     companies whose underlying fundamentals justify a higher tier.
 
     **Authentication.** All requests require a single header: `X-API-Key`.
-    Keys are issued from the developer console at `https://api.keplerinsights.us`.
+    Keys are issued from the developer console at `https://console.keplerinsights.us`.
 
     **Sandbox.** Test keys prefixed `ki_test_` accept only the four canned
     domains (`acme.test`, `unicorn.test`, `struggling.test`, `cohort.test`),
@@ -19,12 +19,12 @@ info:
     `mode: sandbox`. Live keys prefixed `ki_live_` reject test domains and
     run against the real engine.
 
-    **Cold vs cached.** Scoring against a cold company can take 30–60 seconds
-    and costs us real money on fetchers + LLM enrichment. Cached calls
-    are nearly free. The API surfaces this via two paths: `GET /v1/score/{domain}`
-    is always cached (404 if no recent record exists), and `POST /v1/score`
-    decides per-call based on your tier's freshness window. Cold spend is
-    bounded by per-tier monthly caps + circuit breakers.
+    **Cold vs cached.** `GET /v1/score/{domain}` is always cached (404 if no
+    recent record exists). `POST /v1/score` decides per-call based on your
+    tier's freshness window: a fresh record returns inline (`200`), a stale
+    or missing one queues a cold pipeline run and returns `202` with a
+    `job_id` to poll. Cold spend is bounded by per-tier monthly caps +
+    circuit breakers.
   contact:
     name: Kepler Insights API support
     email: noah@keplerinsights.us
@@ -75,12 +75,6 @@ paths:
         **Freshness windows by tier:** free 7d, starter 24h, growth 6h,
         scale 1h, enterprise 15min.
       operationId: scoreCompany
-      parameters:
-        - in: query
-          name: wait
-          schema: { type: string, enum: [true, false], default: "true" }
-          description: Accepted for backwards compatibility, ignored. Cold is always async.
-          deprecated: true
       requestBody:
         required: true
         content:
@@ -325,7 +319,7 @@ paths:
       tags: [meta]
       summary: Poll an async scoring job.
       description: |
-        Returns the current state of a job started by `POST /v1/score?wait=false`.
+        Returns the current state of a cold-scoring job. Jobs are created automatically by `POST /v1/score` whenever a cold pipeline run is needed.
         `status` advances `pending → complete | failed` on the first poll that
         observes a terminal underlying execution. Settle is lazy: a never-polled
         job stays `pending` in storage until its 30-day TTL.
@@ -364,7 +358,7 @@ components:
       name: X-API-Key
       description: |
         Live keys are prefixed `ki_live_`, test keys `ki_test_`. Issue + revoke
-        keys at https://api.keplerinsights.us. Never embed a key in client-side
+        keys at https://console.keplerinsights.us. Never embed a key in client-side
         code — every endpoint is backend-to-API only.
 
   parameters:
@@ -424,7 +418,7 @@ components:
       description: Caller-facing metadata. Stable across versions.
       properties:
         tier:                   { type: string, enum: [free, starter, growth, scale, enterprise] }
-        cache_status:           { type: string, enum: [cached, cold] }
+        cache_status:           { type: string, enum: [cached], description: "Today only `cached` is emitted — fresh cold-pipeline results are written to cache before the response is constructed. The enum is reserved for a future sync-cold response shape." }
         freshness_window_hours: { type: number }
 
     ScoreResponse:

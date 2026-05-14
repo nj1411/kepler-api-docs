@@ -20,17 +20,16 @@ Branch on `error`, not on `message`. The `error` string is stable across version
 | Status | `error` | Cause | Recover |
 |---|---|---|---|
 | **400** | `body.domain required` | POST body had no `domain` field. | Add it. |
-| **400** | `async_requires_growth` | `wait=false` on Free/Starter. | Upgrade tier, or omit `wait` (sync path is on every tier). |
 | **400** | `sandbox: only [...] supported` | Live domain with a test key. | Use a `ki_test_` key for sandbox, `ki_live_` key for real. |
 | **400** | `test domains require a ki_test_ key` | Test domain with a live key. | Same — match domain to key prefix. |
 | **400** | `invalid_cursor` | History pagination cursor malformed. | Drop the cursor (start over) or use the `next_cursor` we returned. |
 | **400** | `window must be one of ['7d','30d','90d']` | Bad `?window=` value on `/v1/movers`. | Use a supported value. |
 | **401** | `unauthorized` | Missing or invalid `X-API-Key`. | Check the header is set and the key is active. Allow up to 5 min for revocations to propagate. |
 | **403** | `free_tier_sandbox_only` | Live key on Free tier attempted a real-domain score. The Free trial is sandbox-only. | Use a `ki_test_` key against the 4 [canned test domains](/sandbox), or upgrade to Starter. |
-| **403** | (varies) | Job belongs to a different caller. | Job IDs aren't shareable across keys; check you're polling with the same account that started the job. |
+| **403** | `forbidden` | Job belongs to a different account. | Job IDs are bound to the user that started them — any of that user's keys can poll, but keys from another account cannot. |
 | **404** | `no score available for this domain` | `GET /v1/score/{domain}` against a never-scored domain. | Trigger one with `POST /v1/score`. |
 | **404** | `no_history` | Same shape, history endpoint. | Trigger an initial score. |
-| **404** | `job not found` | Unknown or expired (>30d) job ID. | Re-run `POST /v1/score?wait=false`. |
+| **404** | `job not found` | Unknown or expired (>30d) job ID. | Re-run `POST /v1/score` to start a fresh cold pipeline. |
 | **429** | `cold_budget_exhausted` (`reason: monthly_cap`) | Account exhausted its tier's monthly cold-call budget. v1.0 is flat-only — no overage. | Upgrade to the next tier, or wait for the next monthly reset (`Retry-After` header gives seconds remaining). v1.5 will add opt-in metered overage. |
 | **429** | `rate limited` (`reason: per_key_cold_1h`) | This key hit 200 cold calls in 1 hour. | Wait — `Retry-After` header gives seconds until reset. |
 | **429** | `rate limited` (`reason: account_cold_24h`) | Account hit 2× tier monthly cold cap inside 24h. | Wait, or email support if legitimate spike. |
@@ -41,35 +40,17 @@ Branch on `error`, not on `message`. The `error` string is stable across version
 |---|---|---|---|
 | **500** | `internal error` | Unhandled exception. | Retry once. If persistent, email support with `requestId` from headers. |
 | **500** | `sandbox_invariant_violated` | A sandbox key reached a live-path codepath. **Should never fire** — alerts us when it does. | Retry; email support so we can investigate the regression. |
-| **502** | `scoring failed` | Cold pipeline ran but the engine couldn't produce a score (insufficient data, fetcher exhaustion). Response includes `execution_arn` for support correlation. | Try a different domain, or wait a few hours and retry — fetcher credit exhaustion clears on the daily rollover. |
-| **504** | `scoring timeout` | Cold pipeline exceeded the 60s sync budget. The run is still going server-side. | Retry `GET /v1/score/{domain}` in ~30s — the result will land in the cache when the SFN execution completes. Or use the async path (`wait=false`, Growth+). |
+| **500** | `scoring engine unavailable` | Step Functions failed to start the cold pipeline. | Retry once; email support if persistent. |
 
-## How to handle 504s gracefully
+## How cold scoring fails after kickoff
 
-The pattern that works:
+A successful `POST /v1/score` cold path returns `202` with a `job_id` immediately, then queues the run. If the engine later fails to produce a score (insufficient data, fetcher credit exhaustion, etc.), the corresponding `GET /v1/jobs/{job_id}` poll returns:
 
-```python
-import time, requests
-
-def score(domain, key):
-    r = requests.post("https://api.keplerinsights.us/v1/score",
-                      headers={"X-API-Key": key},
-                      json={"domain": domain})
-    if r.status_code == 200:
-        return r.json()
-    if r.status_code == 504:
-        # Background run is in flight — poll the cached endpoint
-        for _ in range(20):
-            time.sleep(5)
-            r2 = requests.get(f"https://api.keplerinsights.us/v1/score/{domain}",
-                              headers={"X-API-Key": key})
-            if r2.status_code == 200:
-                return r2.json()
-        raise TimeoutError("cold scoring exceeded 2-minute wall time")
-    r.raise_for_status()
+```json
+{ "status": "failed", "failure_reason": "scoring_completed_no_record" }
 ```
 
-If you're on Growth+, prefer [async scoring](/endpoints/async) — same pattern but server-side, with explicit job IDs.
+Possible `failure_reason` values: `sfn_failed`, `sfn_timed_out`, `sfn_aborted`, `scoring_completed_no_record`. Retry with a different domain, or wait a few hours and re-run — fetcher credit exhaustion clears on the daily rollover. See [`GET /v1/jobs/{job_id}`](/endpoints/jobs) for the full response shape.
 
 ## What we never do
 

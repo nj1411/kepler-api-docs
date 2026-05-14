@@ -5,6 +5,8 @@ description: "Curated company-scoring intelligence over a 67-signal engine."
 
 The Kepler Insights API exposes the same scoring engine that powers Kepler's Pro Insight and Pro Venture portals — over a stable REST surface, with deterministic schemas and a free sandbox.
 
+<Tip>Looking for the product overview, pricing, and what's in v1? See the [API marketing page](https://keplerinsights.us/api) on keplerinsights.us.</Tip>
+
 ## What it scores
 
 Every Kepler score is a composite over **67 signals** organized into **4 buckets**:
@@ -25,10 +27,6 @@ The composite (0–100) maps to a **KI rating** from `KI-5` (early-stage) to `KI
 - **Compare against a cohort.** `GET /v1/company/{domain}/cohort` returns sector + geo + profile-matched peers, ranked.
 - **Assess data confidence.** `GET /v1/company/{domain}/confidence` shows how much of the score is grounded in real data vs neutral fallbacks.
 - **Read the universe.** `GET /v1/distribution` and `GET /v1/movers` summarize every company Kepler has ever scored.
-
-## How it costs
-
-Cached calls are nearly free; cold calls cost us real money on fetchers + LLM enrichment. Pricing reflects that asymmetry — see [Economics](/economics) for the rationale.
 
 ## Get started
 

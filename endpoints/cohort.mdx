@@ -56,7 +56,7 @@ A company is in the cohort if all three match the target's. The target itself is
 
 ## What 404 means
 
-If the target has never been scored, you get `404 { error: "target_not_found" }`. Trigger a score with `POST /v1/score` first.
+If the target has never been scored, you get `404 { error: "no_history" }`. Trigger a score with `POST /v1/score` first.
 
 If the target exists but has no peers (rare — usually a very narrow sector / geo combination), the response is `200` with `cohort.count: 0`. Render gracefully.
 

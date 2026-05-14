@@ -2,14 +2,14 @@
 
 This directory is the source content for the public docs site at **docs.keplerinsights.us**.
 
-**Hosting:** Mintlify. Not signed up yet — provisioned at the coordinated API launch event.
+**Hosting:** Mintlify. Live since 2026-05-12 (API launch event). Content lives in the `nj1411/kepler-api-docs` GitHub repo — push from here to that repo to update the live site.
 
 ---
 
 ## File map
 
 ```
-Ki_dev/docs/
+docs_site/
 ├── README.md                  ← this file (build / deploy notes)
 ├── mint.json                  ← Mintlify navigation + branding config
 ├── openapi.yaml               ← OpenAPI 3.1 spec (single source of truth)
@@ -23,7 +23,7 @@ Ki_dev/docs/
 ├── endpoints/
 │   ├── score.mdx              POST /v1/score
 │   ├── score-get.mdx          GET  /v1/score/{domain}
-│   ├── async.mdx              POST /v1/score?wait=false  (narrative)
+│   ├── async.mdx              Async cold-scoring narrative + polling guide
 │   ├── jobs.mdx               GET  /v1/jobs/{job_id}
 │   ├── history.mdx            GET  /v1/score/{domain}/history
 │   ├── cohort.mdx             GET  /v1/company/{domain}/cohort
@@ -42,7 +42,7 @@ Mintlify ships a CLI for live preview without a paid account:
 
 ```bash
 npm i -g mintlify
-cd Ki_dev/docs
+cd docs_site
 mintlify dev
 # → http://localhost:3000
 ```
@@ -57,17 +57,15 @@ This validates `mint.json`, renders MDX, resolves `openapi.yaml` references, and
 4. **Code examples use `ki_live_...` and `ki_test_...` placeholders.** Never paste a real key, even from a dead test account.
 5. **MDX anchors:** when linking between docs, use root-relative paths (`/quickstart`, `/endpoints/score`) — not file names. Mintlify rewrites these.
 
-## Deploy day checklist
+## Deploy day checklist (historical — kept for reference)
 
-When `api.keplerinsights.us` is being flipped live (post-Phase H):
+This section captures the one-shot setup that happened at the 2026-05-12 launch event. Day-to-day updates are now just: edit MDX → push to `nj1411/kepler-api-docs` → Mintlify rebuilds.
 
 1. **Sign up for Mintlify.** Free tier covers a single site at a custom subdomain.
 2. **Create a new project** pointing at this directory. Mintlify can deploy from a Git push, a CLI upload, or a manual web-upload zip. CLI upload (`mintlify deploy`) is the cleanest.
 3. **Custom domain.** Set `docs.keplerinsights.us` in Mintlify's domain settings; add the CNAME at the DNS provider.
 4. **Smoke check.** Visit `docs.keplerinsights.us/quickstart`. Verify code samples render with syntax highlighting + copy buttons. Click through every nav entry.
-5. **Update the dev console.** The console at `api.keplerinsights.us` should link `Docs →` to the live URL — update `Ki_dev/api_site/index.html` if it still points to a stub.
-6. **Update `mint.json` topbar.** If the status page launched in the same coordinated event, the `https://status.keplerinsights.us` topbar link is already pointing at the live page.
-7. **Crawler hygiene.** Mintlify lets browsers index by default — leave that on once we're public. Pre-launch: gate the project as "Private" in Mintlify settings.
+5. **Update the dev console.** The console at `console.keplerinsights.us` should link `Docs →` to the live docs URL.
 
 ## Spec validation
 

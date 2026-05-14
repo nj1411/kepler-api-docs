@@ -2,8 +2,8 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "Kepler Insights API",
   "logo": {
-    "light": "/logo.png",
-    "dark":  "/logo.png"
+    "light": "/logo-light.png",
+    "dark":  "/logo-dark.png"
   },
   "favicon": "/favicon.png",
   "colors": {
@@ -62,12 +62,10 @@
     }
   ],
   "openapi": "openapi.yaml",
-  "footerSocials": {},
   "feedback": {
     "thumbsRating": true,
     "suggestEdit":  false
   },
-  "analytics": {},
   "metadata": {
     "og:title":       "Kepler Insights API",
     "og:description": "Curated company-scoring intelligence over a 67-signal engine."

@@ -43,9 +43,8 @@ Every endpoint accepts `ki_test_` keys. Coverage parity is verified by an automa
 
 | Endpoint | Sandbox behavior |
 |---|---|
-| `POST /v1/score`, `GET /v1/score/{domain}` | Canned score for the 4 test domains. Live keys reject them. |
-| `POST /v1/score?wait=false` | Returns a real `job_id` writing to the jobs table; status flips `pending → complete` after a 5-second age threshold so you can exercise the full poll loop. |
-| `GET /v1/jobs/{job_id}` | Reads the sandbox job row. Settles age-based instead of via a real execution. |
+| `POST /v1/score`, `GET /v1/score/{domain}` | Canned score for the 4 test domains. Live keys reject them. Sandbox always returns inline 200 — the cold-vs-cached split applies only to live keys. |
+| `GET /v1/jobs/{job_id}` | Reserved for live cold paths. Sandbox doesn't queue jobs, so polling for a sandbox job ID returns 404. |
 | `GET /v1/score/{domain}/history` | 4–12 deterministic records ending now, going back daily. Pagination + cursor work identically to live. |
 | `GET /v1/company/{domain}/cohort` | 12 synthetic members named `cohort-NN.test`, spread around the target. |
 | `GET /v1/company/{domain}/confidence` | Per-domain canned band + completeness + missing-signal list. |
@@ -58,7 +57,6 @@ Every endpoint accepts `ki_test_` keys. Coverage parity is verified by an automa
 
 - **Test domain on a live key** → `400 { "error": "test domains require a ki_test_ key" }`
 - **Real domain on a test key** → `400 { "error": "sandbox: only ['acme.test', 'cohort.test', 'struggling.test', 'unicorn.test'] supported" }`
-- **Async cold scoring (`wait=false`) is gated to Growth+** — using a test key on Free/Starter still triggers the tier check.
 
 ## When to graduate
 
