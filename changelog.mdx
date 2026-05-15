@@ -1,0 +1,26 @@
+---
+title: "Changelog"
+description: "Product updates to the Kepler Insights API."
+---
+
+## Week of 2026-05-12
+
+### New
+
+- **Public API launch.** The Kepler Insights scoring API is now generally available. Pick up an `ki_live_` key in the [developer console](https://console.keplerinsights.us) and start with the [Quickstart](/quickstart).
+- **Sandbox environment.** Build and test against four canned test domains using `ki_test_` keys — no fetcher cost, no quota burn. See [Sandbox](/sandbox).
+- **Five public tiers.** Free (14-day trial), Starter, Growth, Scale, and Enterprise, each with their own cached + cold call budgets and freshness windows. See [Tiers & limits](/tiers).
+
+### Updates
+
+- **Cold scoring is now always async on every paid tier.** When `POST /v1/score` needs to run a cold pipeline, the API returns `202 Accepted` with a `job_id` and `poll_url`. Poll `GET /v1/jobs/{job_id}` until `status` is `complete`. The Python and TypeScript SDKs handle the polling loop for you. See [Async scoring](/endpoints/async).
+- **Sandbox responses are synchronous.** Sandbox `POST /v1/score` calls return the score inline as `200 OK` — sandbox does not queue jobs. See [Sandbox](/sandbox).
+- **Freshness windows finalized per tier:** Starter 24h, Growth 6h, Scale 1h, Enterprise 15m. Cached responses within the window do not count against your cold budget.
+- **Cold-spend circuit breakers.** Two automatic safety nets cap runaway cold usage: 200 cold calls/hour per key, and 2× your tier's monthly cold budget per account in any 24h window. Both return `429` with a `reason` field.
+
+### Fixes
+
+- `cache_status` no longer returns `"cold"`. The field is now `"cached"` or `"fresh"` — the cold-result case is delivered through the async job flow instead. See [`POST /v1/score`](/endpoints/score).
+- The cohort endpoint now returns `no_history` (was `target_not_found`) when the target domain has never been scored. See [Cohort](/endpoints/cohort).
+- Removed several error codes that the API never actually emits, including `400 async_requires_growth` and the spurious `502`/`504` rows. See [Errors](/errors) for the current, accurate list.
+- The `wait` request field is accepted for backwards-compatibility but has no effect — cold scoring always uses the async job flow.

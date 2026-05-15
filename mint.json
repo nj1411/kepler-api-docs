@@ -59,6 +59,12 @@
         "endpoints/signals",
         "endpoints/usage"
       ]
+    },
+    {
+      "group": "Resources",
+      "pages": [
+        "changelog"
+      ]
     }
   ],
   "openapi": "openapi.yaml",
