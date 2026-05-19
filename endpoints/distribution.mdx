@@ -16,16 +16,22 @@ The shape of the entire scored universe. Use it to position any individual score
 
 ```json
 {
-  "pipeline_version": "phase5-preflight",
+  "pipeline_version": "v1",
   "universe": {
     "count": 540,
     "mean": 54.3, "p50": 53.5, "p90": 76.0,
     "stddev": 16.8, "min": 28.7, "max": 79.4,
     "composite_hist": [
-      { "range": "0-5",   "count": 0 },
-      { "range": "5-10",  "count": 0 },
-      ...
-      { "range": "95-100","count": 0 }
+      { "range": "0-5",    "count": 0 },  { "range": "5-10",   "count": 0 },
+      { "range": "10-15",  "count": 0 },  { "range": "15-20",  "count": 2 },
+      { "range": "20-25",  "count": 4 },  { "range": "25-30",  "count": 8 },
+      { "range": "30-35",  "count": 18 }, { "range": "35-40",  "count": 32 },
+      { "range": "40-45",  "count": 54 }, { "range": "45-50",  "count": 78 },
+      { "range": "50-55",  "count": 92 }, { "range": "55-60",  "count": 88 },
+      { "range": "60-65",  "count": 68 }, { "range": "65-70",  "count": 48 },
+      { "range": "70-75",  "count": 28 }, { "range": "75-80",  "count": 14 },
+      { "range": "80-85",  "count": 6 },  { "range": "85-90",  "count": 0 },
+      { "range": "90-95",  "count": 0 },  { "range": "95-100", "count": 0 }
     ],
     "scale_premium_hist": [
       { "range": "0-1",   "count": 380 },
@@ -50,8 +56,8 @@ If you need finer resolution, paginate `/v1/score/{domain}/history` over a repre
 
 ## `pipeline_version`
 
-The universe is filtered to records produced under the current pipeline version (e.g. `phase5-preflight`). When Kepler ships a major engine change, this version bumps and the universe is re-seeded as new records land. Don't compare counts across pipeline versions — they're effectively different datasets.
+The universe is filtered to records produced under the current pipeline version (e.g. `v1`). When Kepler ships a major engine change, this version bumps and the universe is re-seeded as new records land. Don't compare counts across pipeline versions — they're effectively different datasets.
 
 ## Caching
 
-Served from a 10-minute in-memory cache (per Lambda container). Two calls in the same minute will likely return the same `count` even if a new scoring run lands between them.
+Served from a 10-minute in-memory cache. Two calls in the same minute will likely return the same `count` even if a new scoring run lands between them.

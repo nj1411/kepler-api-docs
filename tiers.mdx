@@ -49,7 +49,7 @@ Two automatic safety nets cap cold spend on top of the monthly cap:
 1. **Per-key cold ceiling** — 200 cold calls per hour, per key. Trips `429 { error: "rate limited", reason: "per_key_cold_1h" }`. Rotates back open after the hour rolls.
 2. **Per-account 24-hour cold ceiling** — 2× your tier's monthly cold-call budget within any 24-hour window. Catches runaway scripts on a fresh key. Returns `429 { reason: "account_cold_24h" }`. Email support if you've hit this legitimately and we'll lift the cap by hand.
 
-Both checks happen before the SFN execution starts, so a tripped breaker costs zero.
+Both checks happen before the scoring pipeline starts, so a tripped breaker costs zero.
 
 ## Watermarks
 

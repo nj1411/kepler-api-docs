@@ -36,10 +36,10 @@ Once you have the `score_url`, do `GET https://api.keplerinsights.us/v1/score/st
 
 | `failure_reason` | Meaning |
 |---|---|
-| `sfn_failed` | The state-machine ended in `FAILED` (engine raised an exception). |
-| `sfn_timed_out` | Step Functions hit its task timeout. Usually transient — retry. |
+| `sfn_failed` | The pipeline ended in `FAILED` (engine raised an exception). |
+| `sfn_timed_out` | The pipeline hit its task timeout. Usually transient — retry. |
 | `sfn_aborted` | An operator manually aborted the run. Should never happen in production. |
-| `scoring_completed_no_record` | The state-machine succeeded but no score-history row appeared. Possible cause: insufficient data stub. Check `/v1/company/{domain}/confidence`. |
+| `scoring_completed_no_record` | The pipeline succeeded but no score-history row appeared. Possible cause: insufficient data stub. Check `/v1/company/{domain}/confidence`. |
 
 ## Cross-user access
 
@@ -54,4 +54,4 @@ If you're proxying multiple downstream users through one Kepler key, you'll need
 
 ## Expiration
 
-Jobs are kept 30 days then deleted via DynamoDB TTL. Polling an expired job returns `404`. Don't rely on job rows for long-term history; use `GET /v1/score/{domain}/history` for that.
+Jobs are kept 30 days then auto-expire. Polling an expired job returns `404`. Don't rely on job rows for long-term history; use `GET /v1/score/{domain}/history` for that.

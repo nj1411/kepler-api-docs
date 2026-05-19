@@ -40,7 +40,7 @@ Branch on `error`, not on `message`. The `error` string is stable across version
 |---|---|---|---|
 | **500** | `internal error` | Unhandled exception. | Retry once. If persistent, email support with `requestId` from headers. |
 | **500** | `sandbox_invariant_violated` | A sandbox key reached a live-path codepath. **Should never fire** — alerts us when it does. | Retry; email support so we can investigate the regression. |
-| **500** | `scoring engine unavailable` | Step Functions failed to start the cold pipeline. | Retry once; email support if persistent. |
+| **500** | `scoring engine unavailable` | The scoring pipeline failed to start. | Retry once; email support if persistent. |
 
 ## How cold scoring fails after kickoff
 
@@ -54,6 +54,6 @@ Possible `failure_reason` values: `sfn_failed`, `sfn_timed_out`, `sfn_aborted`, 
 
 ## What we never do
 
-- **Surface fetcher errors directly.** A Crustdata timeout becomes a `data_warnings` entry in `GET /v1/company/{domain}/confidence`, not a 5xx. The score is still produced.
+- **Surface fetcher errors directly.** A data fetcher timeout becomes a `data_warnings` entry in `GET /v1/company/{domain}/confidence`, not a 5xx. The score is still produced.
 - **Return partial data on 200.** A 200 response always has the full schema. Missing data appears as neutral defaults (signal score ≈ 50) flagged in `confidence`.
 - **Auto-retry your call on a 4xx.** If you sent bad input, retrying doesn't help.

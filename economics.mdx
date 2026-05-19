@@ -7,13 +7,13 @@ Most pricing pages don't explain themselves. This one does, because the asymmetr
 
 ## What a cold call actually costs us
 
-A cold scoring run executes a Step Functions pipeline that fans out to four fetchers (Crustdata, PDL, DataForSEO, NewsAPI) and runs four to six LLM enrichment calls against Claude Sonnet + Claude Haiku. Real numbers per cold call, averaged across our blast cohort:
+A cold scoring run executes a multi-stage pipeline that fans out across multiple data fetchers and runs four to six AI model inference calls for signal enrichment. Real numbers per cold call, averaged across our blast cohort:
 
 | Cost line | Typical |
 |---|---|
-| Fetcher credits (Crustdata + PDL + DataForSEO + NewsAPI) | $0.20 – $0.40 |
-| LLM enrichment (Claude API) | $0.10 – $0.30 |
-| Compute (Lambda + DynamoDB) | &lt;$0.01 |
+| Data fetcher credits | $0.20 – $0.40 |
+| AI model inference | $0.10 – $0.30 |
+| Compute | <$0.01 |
 | **Total cold call** | **~$0.30 – $0.80** |
 
 Latency: 30–60 seconds end to end.
@@ -71,4 +71,4 @@ Customers on the flat plan when v1.5 ships will be auto-eligible. Until then: pl
 
 ## Margin transparency
 
-If we publish a $0.50/cold-call cost and the API runs at $0.80 average, our gross margin on Scale's max-included usage shrinks to 20%. We monitor this weekly via `kepler-api-cost-log`. If we see two consecutive weeks above $0.60 average we'll either lower the included-cold number or raise the base price. We'd telegraph any pricing change with 30 days notice on existing contracts.
+If we publish a $0.50/cold-call cost and the API runs at $0.80 average, our gross margin on Scale's max-included usage shrinks to 20%. We monitor cold-call cost weekly via internal telemetry. If the average is structurally higher than expected for a sustained period, we'll either lower the included-cold number or raise the base price. We'd telegraph any pricing change with 30 days notice on existing contracts.

@@ -39,7 +39,7 @@ HTTP/1.1 202 Accepted
 }
 ```
 
-The 202 typically arrives in under 1 second — it's just the time to start the Step Functions execution and write the job row.
+The 202 typically arrives in under 1 second — it's just the time to start the scoring pipeline and write the job row.
 
 ## Poll until settled
 
@@ -81,12 +81,12 @@ curl https://api.keplerinsights.us/v1/score/stripe.com \
 ```mermaid
 stateDiagram-v2
   [*] --> pending: POST /v1/score (cold)
-  pending --> complete: SFN execution SUCCEEDED
-  pending --> failed: FAILED / TIMED_OUT / ABORTED
+  pending --> complete: pipeline SUCCEEDED
+  pending --> failed: pipeline FAILED / TIMED_OUT / ABORTED
   complete --> [*]: 30-day TTL
   failed --> [*]: 30-day TTL
 ```
 
 ## Migration note (pre-2026-05-12)
 
-Before 2026-05-12, `POST /v1/score` blocked synchronously for up to 60 seconds on cold paths. This was incompatible with HTTP API's 30-second integration timeout — cold requests would intermittently return 503 from the gateway while the scoring engine continued running server-side. Auto-queue resolves this. The `wait=false` parameter is still accepted for backwards compatibility but is now a no-op — cold is always async, sync `wait=true` requests get the same 202 response shape.
+Before 2026-05-12, `POST /v1/score` blocked synchronously for up to 60 seconds on cold paths. This was incompatible with the API gateway's request timeout — cold requests would intermittently return 503 while the scoring engine continued running server-side. Auto-queue resolves this. The `wait=false` parameter is still accepted for backwards compatibility but is now a no-op — cold is always async, sync `wait=true` requests get the same 202 response shape.

@@ -126,7 +126,7 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500":
-          description: Scoring engine unavailable (Step Functions or job tracking failure).
+          description: Scoring engine unavailable (pipeline or job tracking failure).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -193,8 +193,8 @@ paths:
       summary: Sector + geo + business-profile-matched cohort comparison.
       description: |
         Returns where the target ranks against companies sharing its sector,
-        geo scope, and growth/established profile. Drawn from the kepler-brain
-        events table; refresh interval depends on universe size (typically <10s).
+        geo scope, and growth/established profile. Drawn from the scoring
+        event store; refresh interval depends on universe size (typically <10s).
       operationId: getCohort
       parameters:
         - $ref: "#/components/parameters/DomainPath"
@@ -506,7 +506,7 @@ components:
         scored_at:        { type: string, format: date-time }
         band:             { type: string, enum: [high, medium, directional] }
         completeness_pct: { type: integer, minimum: 0, maximum: 100 }
-        failed_fetchers:  { type: array, items: { type: string, enum: [crustdata, pdl, dataforseo, newsapi] } }
+        failed_fetchers:  { type: array, items: { type: string, enum: [firmographic, people, web, news] } }
         data_warnings:    { type: array, items: { type: string } }
         missing_signals:  { type: array, items: { type: string }, description: "Signals currently scoring at the neutral 50 fallback." }
 
@@ -522,7 +522,7 @@ components:
       type: object
       properties:
         mode:             { type: string }
-        pipeline_version: { type: string, example: "phase5-preflight" }
+        pipeline_version: { type: string, example: "v1" }
         universe:
           type: object
           properties:
