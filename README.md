@@ -57,9 +57,36 @@ This validates `mint.json`, renders MDX, resolves `openapi.yaml` references, and
 4. **Code examples use `ki_live_...` and `ki_test_...` placeholders.** Never paste a real key, even from a dead test account.
 5. **MDX anchors:** when linking between docs, use root-relative paths (`/quickstart`, `/endpoints/score`) — not file names. Mintlify rewrites these.
 
+## Sync mechanics + mirror divergence (added 2026-05-19)
+
+The local `docs_site/` directory and the `nj1411/kepler-api-docs` GitHub repo are two source trees that must stay in sync. They drift any time someone hand-edits one without back-porting to the other.
+
+**To push local edits to live:**
+
+```bash
+gh repo clone nj1411/kepler-api-docs /tmp/kepler-api-docs
+rsync -av --exclude .git --exclude .github docs_site/ /tmp/kepler-api-docs/
+# DO NOT add --delete — see "Known mirror-ahead files" below.
+cd /tmp/kepler-api-docs
+git status                                       # preview intended diff
+git checkout endpoints/history.mdx mint.json     # revert mirror-ahead files
+git diff                                          # final intended diff
+git add -A && git commit -m "..." && git push origin main
+```
+
+Mintlify auto-rebuilds within ~60s of the push.
+
+**Known mirror-ahead files (as of 2026-05-19).** These exist in the GitHub mirror at a more correct state than the local source and were never back-ported. `git checkout` them in the mirror clone before commit, OR do a one-time back-port into `docs_site/` to heal the divergence:
+
+- `endpoints/history.mdx` — mirror has clean `<1KB`, local has HTML entity `&lt;1KB` (post-launch MDX-parsing fix on the mirror, commit `c6ccd81`)
+- `mint.json` — mirror has a `Resources / changelog` nav group at the end of `navigation`; local does not (commit `c9746a9`)
+- `changelog.mdx` — exists only on the mirror; no local source (commit `c9746a9`)
+
+If you `rsync --delete` from local to mirror, you will erase the Changelog page from the live site. Don't.
+
 ## Deploy day checklist (historical — kept for reference)
 
-This section captures the one-shot setup that happened at the 2026-05-12 launch event. Day-to-day updates are now just: edit MDX → push to `nj1411/kepler-api-docs` → Mintlify rebuilds.
+This section captures the one-shot setup that happened at the 2026-05-12 launch event. Day-to-day updates are now just: edit MDX → push to `nj1411/kepler-api-docs` → Mintlify rebuilds (see "Sync mechanics" above for the modern recipe).
 
 1. **Sign up for Mintlify.** Free tier covers a single site at a custom subdomain.
 2. **Create a new project** pointing at this directory. Mintlify can deploy from a Git push, a CLI upload, or a manual web-upload zip. CLI upload (`mintlify deploy`) is the cleanest.

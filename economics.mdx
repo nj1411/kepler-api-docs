@@ -30,15 +30,16 @@ Ratio       ≈ 5,000×
 
 If we billed both flatly we'd either (a) overcharge for cached calls and lose price-sensitive customers, or (b) undercharge for cold calls and lose money on power users. Splitting them lets each path be priced near its true marginal cost.
 
-## How your tier exploits this
+## How your plan exploits this
 
-Every tier has both a cached quota and a cold quota. The freshness window controls which path you land on:
+The Standard plan has both a cached quota (2,000/mo) and a cold quota (100/mo), with a 24-hour freshness window. The window controls which path you land on:
 
-- **Starter (24h window).** Score the same company twice in 24h → second call is cached. Score 500 different companies in a month → most are cold, but the freshness window catches duplicates.
-- **Growth (6h window).** Tighter window means cold runs happen more often, but the per-month cold budget is 5× higher (250) to match.
-- **Scale (1h window).** Near-realtime data. Cold pipeline runs often. Budget reflects it.
+- Score the same company twice in 24h → second call is **cached** (counts against the cached quota, near-zero cost).
+- Score a company that's stale or new to us → **cold** path runs (counts against the cold quota, 30–60s async).
 
-If you're building a daily-refresh dashboard and your tier window is shorter than your refresh cadence, you'll see cached calls. If you're scoring fresh-each-time, you're paying cold rates — which is fine, that's what you're buying.
+If you're building a daily-refresh dashboard for a fixed list of companies, you'll get one cold call per company on first score and cached calls thereafter — you stay well inside the 100/mo cold budget. If you're scoring fresh companies every day from an inbound pipeline, you're paying cold rates — which is fine, that's what you're buying.
+
+**Why 24 hours and not faster?** Upstream firmographic providers refresh weekly at best, and our internal fetcher cache TTL is 7 days. Sub-day freshness windows on the Standard plan would advertise a refresh velocity the underlying data doesn't deliver. Enterprise contracts can negotiate shorter windows where the staleness genuinely matters for the use case.
 
 ## v1.0 is flat-only
 
@@ -65,10 +66,10 @@ Customers on the flat plan when v1.5 ships will be auto-eligible. Until then: pl
 
 **Pattern 1 — Dashboard / portfolio tracking.** You're rendering scores for a fixed list of companies that change slowly. Hit `POST /v1/score` on a daily cron at off-peak hours. Most calls will be cached after the first scoring run; you'll stay well inside your tier's cold budget.
 
-**Pattern 2 — Pipeline screening.** You're scoring hundreds of new companies a month from an inbound list. Size the tier to your monthly volume — Growth's 250 cold calls covers ~8 new companies per workday. If you sustain higher than that, Scale is the right tier.
+**Pattern 2 — Pipeline screening.** You're scoring new companies from an inbound list. Standard's 100 cold calls covers ~3 new companies per workday at sustained volume, or bursts of 50 in a single sitting. If you need more, contact us for Enterprise.
 
 **Pattern 3 — Reactive scoring.** A user enters a domain into your product; you score it. Cold paths return `202` + a `job_id` immediately, so your HTTP request stays under 1 second; poll `GET /v1/jobs/{job_id}` (or let the SDK handle it) to surface the result when ready.
 
 ## Margin transparency
 
-If we publish a $0.50/cold-call cost and the API runs at $0.80 average, our gross margin on Scale's max-included usage shrinks to 20%. We monitor cold-call cost weekly via internal telemetry. If the average is structurally higher than expected for a sustained period, we'll either lower the included-cold number or raise the base price. We'd telegraph any pricing change with 30 days notice on existing contracts.
+At a typical $0.50/cold-call cost, Standard's max-included usage (100 cold calls = $50 variable on the $149 base) lands around 66% gross margin. If actual cold cost runs structurally higher than expected for a sustained period, we'll either lower the included-cold number or raise the base price. We'd telegraph any pricing change with 30 days notice on existing contracts.

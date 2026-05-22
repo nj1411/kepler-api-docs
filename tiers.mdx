@@ -1,46 +1,42 @@
 ---
-title: "Tiers & limits"
-description: "Quotas, freshness windows, async eligibility."
+title: "Plans & limits"
+description: "One paid plan, a free Sandbox, and Enterprise."
 ---
 
-Five public tiers. Cached and cold calls are billed separately because they cost dramatically different amounts — see [Economics](/economics) for the why.
+V1 ships with one paid plan. We'll add more once usage patterns are clear — see the [v1.5 roadmap](#whats-on-the-v15-roadmap) below.
 
-## Quotas
+## Plans
 
-| Tier | Base / mo | Cached calls | Cold calls | When you hit the cap | Freshness window |
+| Plan | Price | Cached calls | Cold calls | When you hit the cap | Freshness window |
 |---|---|---|---|---|---|
-| **Free** (14-day trial) | $0 | 25 | 5 | Upgrade to Starter | 7 days |
-| **Starter** | $99 | 500 | 50 | Upgrade to Growth | 24h |
-| **Growth** | $399 | 5,000 | 250 | Upgrade to Scale | 6h |
-| **Scale** | $999 | 25,000 | 1,000 | Contact us for Enterprise | 1h |
-| **Enterprise** | Custom | Custom | Custom | Negotiated | 15 min |
+| **Sandbox** | $0 | 25 | 5 (sandbox only) | Subscribe to Standard | 7 days |
+| **Standard** | **$149/mo** (or $1,490/yr · ~17% off) | 2,000 | 100 | Contact for Enterprise | 24 hours |
+| **Enterprise** | Custom | Custom | Custom | Negotiated | Negotiated (typically same-day) |
 
 <Note>
-**v1.0 is flat-only.** When you exhaust your monthly cold-call budget, the API returns `429 cold_budget_exhausted` until the next monthly reset. Upgrade to the next tier for more capacity. Metered overage for power users is on the v1.5 roadmap once we have stable cold-call cost telemetry — see [Economics](/economics).
+**v1.0 is flat-only.** When you exhaust your monthly cold-call budget, the API returns `429 cold_budget_exhausted` until the next monthly reset. Metered overage is on the v1.5 roadmap once we have stable cold-call cost telemetry — see [Economics](/economics).
 </Note>
 
 <Note>
-The **Free** tier is a 14-day evaluation trial, not a permanent free plan. It's sandbox-only — no real fetcher access. You must add a card at signup; it auto-converts to Starter at trial end unless you cancel.
+**Sandbox** is free and indefinite, but it doesn't run live cold paths — `ki_live_…` keys on Sandbox are restricted to cached reads + canned sandbox responses. It exists so you can integrate, test rate-limit handling, and validate response shapes before paying anything. Subscribe to Standard whenever you're ready to score real domains.
 </Note>
 
 ## Freshness windows
 
 When you call `POST /v1/score` and a recent record exists within your tier's freshness window, you get it back instantly as `cache_status: "cached"` — no cold-call usage incremented. Only if the record is missing or stale (or you set `force_fresh: true` on Enterprise) do we run a fresh cold pipeline.
 
-| Tier | Window |
+| Plan | Window |
 |---|---|
-| Starter | 24 hours |
-| Growth | 6 hours |
-| Scale | 1 hour |
-| Enterprise | 15 minutes |
+| Standard | 24 hours |
+| Enterprise | Negotiated |
 
-Shorter windows = more cold runs = more cost. Tier prices reflect that.
+**Why 24 hours?** It's an honest floor given how the underlying data behaves. Firmographic providers (employee count, funding, revenue) refresh weekly at best; LinkedIn-derived signals update irregularly; press coverage is the only near-realtime input. Advertising "1-hour freshness" would imply a refresh velocity our data sources don't actually deliver. Enterprise contracts can negotiate shorter windows + per-key `force_fresh=true` overrides for use cases where the marginal staleness matters.
 
 ## Async cold scoring
 
-Cold scoring is always async on every paid tier. When `POST /v1/score` needs to run the cold pipeline, it returns `202` with a `job_id` and a `poll_url` — you then poll `GET /v1/jobs/{job_id}` until `status` flips to `complete`. The `wait` body field is accepted for backwards-compatibility but has no effect. The Python and TypeScript SDKs handle the polling automatically. See [Async scoring](/endpoints/async) for the loop, and [`GET /v1/jobs/{job_id}`](/endpoints/jobs) for the poll response shape.
+Cold scoring is always async. When `POST /v1/score` needs to run the cold pipeline, it returns `202` with a `job_id` and a `poll_url` — you then poll `GET /v1/jobs/{job_id}` until `status` flips to `complete`. The `wait` body field is accepted for backwards-compatibility but has no effect. The Python and TypeScript SDKs handle the polling automatically. See [Async scoring](/endpoints/async) for the loop, and [`GET /v1/jobs/{job_id}`](/endpoints/jobs) for the poll response shape.
 
-Free tier cannot run live cold paths at all — `ki_live_…` keys on Free are restricted to cached reads + sandbox.
+Sandbox accounts cannot run live cold paths — `ki_live_…` keys on Sandbox are restricted to cached reads + sandbox responses.
 
 ## Circuit breakers
 
@@ -57,10 +53,21 @@ Every response includes an `x_kepler` block:
 
 ```json
 "x_kepler": {
-  "tier": "starter",
+  "tier": "standard",
   "cache_status": "cached",
   "freshness_window_hours": 24
 }
 ```
 
 `cache_status: "cached"` means a stored record within your freshness window was returned. The cold pipeline doesn't return inline scores — it returns a `202` with a `job_id`. Once the job completes and you `GET /v1/score/{domain}`, the response again carries `cache_status: "cached"` since the fresh score is now in cache.
+
+## What's on the v1.5 roadmap
+
+We deliberately launched narrow. Once we have 60–90 days of real usage data:
+
+- **Metered overage** — opt-in burst capacity beyond your monthly cold-call budget, priced per-call from observed cost.
+- **Higher-volume plans** — if there's demand, a tier above Standard for customers running thousands of cold calls per month.
+- **Tighter freshness windows** — gated on improved upstream data refresh and our own fetcher cache investments, not just on price.
+- **Webhooks** — async completion notifications instead of polling.
+
+If you need anything on this list before it ships, go [Enterprise](mailto:team@keplerinsights.us) — we can wire bespoke arrangements there immediately.
